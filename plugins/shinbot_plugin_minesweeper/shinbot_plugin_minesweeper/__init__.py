@@ -29,7 +29,15 @@ from .parser import (
     parse_root_command,
     parse_shortcut_message,
 )
-from .renderer import RenderContext, RenderOptions, render_board, render_error, render_help
+from .renderer import (
+    RenderContext,
+    RenderOptions,
+    SvgBoard,
+    render_board,
+    render_board_svg,
+    render_error,
+    render_help,
+)
 from .store import GameStore, JsonGameStore, MemoryGameStore
 
 if TYPE_CHECKING:
@@ -58,6 +66,8 @@ class MinesweeperPluginConfig(BaseModel):
     reveal_mines_on_loss: bool = True
     show_coordinates: bool = True
     ascii_symbols: bool = False
+    render_mode: Literal["text", "auto", "image"] = "text"
+    image_scale: float = Field(default=1.0, gt=0, le=4)
     recall_old_boards: bool = True
     keep_recent_board_messages: int = Field(default=2, ge=1, le=5)
     session_idle_ttl_seconds: int = Field(default=86400, ge=60, le=604800)
@@ -73,6 +83,7 @@ def setup(plg: Plugin) -> None:
 
     config = _load_plugin_config(plg.plugin_id)
     store = _build_store(plg, config)
+    render_dir = Path(plg.data_dir) / "renders"
 
     @plg.on_command(
         "minesweeper",
@@ -82,7 +93,14 @@ def setup(plg: Plugin) -> None:
         permission="cmd.minesweeper",
     )
     async def minesweeper_command(ctx: Any, args: str) -> None:
-        await _handle_root_command(ctx, args, store=store, config=config, logger=plg.logger)
+        await _handle_root_command(
+            ctx,
+            args,
+            store=store,
+            config=config,
+            logger=plg.logger,
+            render_dir=render_dir,
+        )
 
     @plg.on_route(
         RouteCondition(
@@ -98,7 +116,13 @@ def setup(plg: Plugin) -> None:
         if not ctx.has_permission("cmd.minesweeper"):
             await ctx.send("权限不足：需要 cmd.minesweeper")
             return
-        await _handle_shortcut(ctx, store=store, config=config, logger=plg.logger)
+        await _handle_shortcut(
+            ctx,
+            store=store,
+            config=config,
+            logger=plg.logger,
+            render_dir=render_dir,
+        )
 
     plg.logger.info("Minesweeper plugin loaded")
 
@@ -121,6 +145,7 @@ async def _handle_root_command(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     game = store.load(ctx.session_id)
     try:
@@ -133,19 +158,56 @@ async def _handle_root_command(
         await ctx.send(render_help())
         return
     if command.action == "start":
-        await _start_game(ctx, command, store=store, config=config, logger=logger)
+        await _start_game(
+            ctx,
+            command,
+            store=store,
+            config=config,
+            logger=logger,
+            render_dir=render_dir,
+        )
         return
     if command.action == "restart":
-        await _restart_game(ctx, command, game, store=store, config=config, logger=logger)
+        await _restart_game(
+            ctx,
+            command,
+            game,
+            store=store,
+            config=config,
+            logger=logger,
+            render_dir=render_dir,
+        )
         return
     if command.action == "status":
-        await _send_status(ctx, game, store=store, config=config, logger=logger)
+        await _send_status(
+            ctx,
+            game,
+            store=store,
+            config=config,
+            logger=logger,
+            render_dir=render_dir,
+        )
         return
     if command.action == "quit":
-        await _quit_game(ctx, game, store=store, config=config, logger=logger)
+        await _quit_game(
+            ctx,
+            game,
+            store=store,
+            config=config,
+            logger=logger,
+            render_dir=render_dir,
+        )
         return
 
-    await _apply_operation(ctx, command, game, store=store, config=config, logger=logger)
+    await _apply_operation(
+        ctx,
+        command,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
 
 
 async def _handle_shortcut(
@@ -154,6 +216,7 @@ async def _handle_shortcut(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     game = store.load(ctx.session_id)
     if game is None or game.status != "active":
@@ -173,7 +236,15 @@ async def _handle_shortcut(
         return
 
     root = RootCommand(action=command.action, cells=command.cells)
-    await _apply_operation(ctx, root, game, store=store, config=config, logger=logger)
+    await _apply_operation(
+        ctx,
+        root,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
 
 
 async def _start_game(
@@ -183,6 +254,7 @@ async def _start_game(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     existing = store.load(ctx.session_id)
     if existing is not None and existing.status == "active":
@@ -195,7 +267,14 @@ async def _start_game(
         await ctx.send(render_error(str(exc)))
         return
     store.save(game)
-    await _send_board(ctx, game, store=store, config=config, logger=logger)
+    await _send_board(
+        ctx,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
 
 
 async def _restart_game(
@@ -206,6 +285,7 @@ async def _restart_game(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     size = command.size or _default_size(config)
     if size.kind == "current":
@@ -221,7 +301,14 @@ async def _restart_game(
     if game is not None:
         new_game.board_message_ids = list(game.board_message_ids)
     store.save(new_game)
-    await _send_board(ctx, new_game, store=store, config=config, logger=logger)
+    await _send_board(
+        ctx,
+        new_game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
 
 
 async def _send_status(
@@ -231,11 +318,20 @@ async def _send_status(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     if game is None:
         await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
         return
-    await ctx.send(_render_game_board(game, config=config))
+    await _send_board(
+        ctx,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+        track_board=False,
+    )
 
 
 async def _quit_game(
@@ -245,6 +341,7 @@ async def _quit_game(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     if game is None:
         await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
@@ -256,7 +353,14 @@ async def _quit_game(
     game.updated_at = time.time()
     game.last_action = "结束本局"
     store.save(game)
-    await _send_board(ctx, game, store=store, config=config, logger=logger)
+    await _send_board(
+        ctx,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
 
 
 async def _apply_operation(
@@ -267,6 +371,7 @@ async def _apply_operation(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
 ) -> None:
     if game is None:
         await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
@@ -301,7 +406,14 @@ async def _apply_operation(
         game.last_action = "胜利"
 
     store.save(game)
-    await _send_board(ctx, game, store=store, config=config, logger=logger)
+    await _send_board(
+        ctx,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
 
 
 async def _send_board(
@@ -311,12 +423,106 @@ async def _send_board(
     store: GameStore[GameState],
     config: MinesweeperPluginConfig,
     logger: Any,
+    render_dir: Path | None = None,
+    track_board: bool = True,
 ) -> None:
-    handle = await ctx.send(_render_game_board(game, config=config))
-    if getattr(handle, "message_id", ""):
-        game.board_message_ids.append(str(handle.message_id))
-    await _recall_old_boards(ctx, game, config=config, logger=logger)
-    store.save(game)
+    content = await _render_game_message(
+        game,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
+    try:
+        handle = await ctx.send(content)
+    except Exception as exc:
+        if not _is_image_message(content):
+            raise
+        logger.debug("Minesweeper image send failed, falling back to text: %s", exc)
+        handle = await ctx.send(_render_game_board(game, config=config))
+    message_id = getattr(handle, "message_id", None)
+    if track_board and message_id is not None and str(message_id):
+        game.board_message_ids.append(str(message_id))
+    if track_board:
+        await _recall_old_boards(ctx, game, config=config, logger=logger)
+        store.save(game)
+
+
+def _is_image_message(content: object) -> bool:
+    if not isinstance(content, list):
+        return False
+    return any(
+        getattr(element, "type", None) == "img"
+        or (isinstance(element, dict) and element.get("type") == "img")
+        for element in content
+    )
+
+
+async def _render_game_message(
+    game: GameState,
+    *,
+    config: MinesweeperPluginConfig,
+    logger: Any,
+    render_dir: Path | None,
+) -> object:
+    image = await _try_render_game_image(
+        game,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
+    )
+    if image is not None:
+        return image
+    return _render_game_board(game, config=config)
+
+
+async def _try_render_game_image(
+    game: GameState,
+    *,
+    config: MinesweeperPluginConfig,
+    logger: Any,
+    render_dir: Path | None,
+) -> list[Any] | None:
+    if config.render_mode == "text" or render_dir is None:
+        return None
+    try:
+        from shinbot.schema.elements import MessageElement
+        from shinbot_plugin_renderkit import (
+            SvgRenderOptions,
+            probe_renderkit_capabilities,
+            render_svg_template_to_file,
+        )
+    except ImportError as exc:
+        logger.debug("Minesweeper image rendering unavailable: %s", exc)
+        return None
+
+    try:
+        if not probe_renderkit_capabilities().svg:
+            logger.debug("Minesweeper image rendering skipped: SVG backend unavailable")
+            return None
+        svg = _render_game_board_svg(game, config=config)
+        result = await render_svg_template_to_file(
+            svg.template,
+            data=svg.data,
+            template_dirs=svg.template_dirs,
+            output_dir=render_dir,
+            options=SvgRenderOptions(
+                width=svg.width,
+                height=svg.height,
+                scale=config.image_scale,
+            ),
+            cache=True,
+        )
+        return [
+            MessageElement.img(
+                str(result.path),
+                alt="扫雷棋盘",
+                width=result.width,
+                height=result.height,
+            )
+        ]
+    except Exception as exc:
+        logger.debug("Minesweeper image rendering failed: %s", exc)
+        return None
 
 
 def _render_game_board(game: GameState, *, config: MinesweeperPluginConfig) -> str:
@@ -333,6 +539,23 @@ def _render_game_board(game: GameState, *, config: MinesweeperPluginConfig) -> s
         reveal_mines_on_loss=config.reveal_mines_on_loss,
     )
     return render_board(game.board, context=context, options=options)
+
+
+def _render_game_board_svg(game: GameState, *, config: MinesweeperPluginConfig) -> SvgBoard:
+    context = RenderContext(
+        difficulty=game.difficulty,
+        status=game.status,
+        moves=game.moves,
+        last_action=game.last_action or None,
+        exploded_cell=_exploded_cell(game),
+    )
+    options = RenderOptions(
+        ascii=config.ascii_symbols,
+        show_coordinates=config.show_coordinates,
+        include_hints=False,
+        reveal_mines_on_loss=config.reveal_mines_on_loss,
+    )
+    return render_board_svg(game.board, context=context, options=options)
 
 
 async def _recall_old_boards(

@@ -6,6 +6,14 @@ The plugin renders a compact plain-text board so it works on every ShinBot
 adapter without image upload support. The default renderer uses Unicode symbols,
 with an ASCII fallback controlled by config.
 
+When `render_mode` is set to `auto` or `image`, the plugin can use the optional
+RenderKit plugin to render a standard SVG board into a PNG image and send it as
+an `img` message element. This is a best-effort path: if RenderKit is not
+installed, its SVG backend is unavailable, or rendering fails, the plugin falls
+back to the plain-text board. The SVG generation stays inside the minesweeper
+plugin because it owns game-specific board semantics; RenderKit only provides
+generic image rasterization.
+
 Each board reply includes game status, difficulty, board size, mine count,
 remaining flags, move count, last action, coordinates, and a fixed-width grid.
 On loss, mines can be revealed by config. The latest board replies can be kept

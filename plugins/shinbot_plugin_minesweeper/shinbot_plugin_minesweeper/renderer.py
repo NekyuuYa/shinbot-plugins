@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, Protocol
 
 from .parser import cell_label
@@ -83,6 +84,17 @@ class RenderContext:
     exploded_cell: tuple[int, int] | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SvgBoard:
+    """Template input for an SVG board render."""
+
+    template: str
+    template_dirs: tuple[Path, ...]
+    data: dict[str, object]
+    width: int
+    height: int
+
+
 def render_board(
     board: BoardView,
     *,
@@ -133,6 +145,107 @@ def render_board(
         lines.append("其他：/ms status，/ms restart，/ms quit")
 
     return "\n".join(lines)
+
+
+def render_board_svg(
+    board: BoardView,
+    *,
+    context: RenderContext | None = None,
+    options: RenderOptions | None = None,
+) -> SvgBoard:
+    """Prepare package-template data for a minesweeper SVG board."""
+
+    active_context = context or RenderContext()
+    active_options = options or RenderOptions(include_hints=False)
+    symbols = UNICODE_SYMBOLS if not active_options.ascii else ASCII_SYMBOLS
+    _validate_board(board)
+
+    cell_size = 34
+    gap = 2
+    left = 54 if active_options.show_coordinates else 18
+    top = 116 if active_options.show_coordinates else 86
+    grid_width = board.width * cell_size + max(0, board.width - 1) * gap
+    grid_height = board.height * cell_size + max(0, board.height - 1) * gap
+    width = left + grid_width + 18
+    height = top + grid_height + 22
+    flag_count = sum(1 for cell in board.cells if _state_value(cell) == "flagged")
+
+    title = (
+        f"扫雷 {active_context.difficulty} {board.width}x{board.height} / "
+        f"{board.mine_count} 雷 / 步数 {active_context.moves}"
+    )
+    subtitle_parts = [f"标记 {flag_count}/{board.mine_count}"]
+    status = _status_line(active_context)
+    if status:
+        subtitle_parts.append(status)
+    if active_context.last_action:
+        subtitle_parts.append(f"本次：{active_context.last_action}")
+    subtitle = " | ".join(subtitle_parts)
+    columns: list[dict[str, object]] = []
+    rows: list[dict[str, object]] = []
+
+    if active_options.show_coordinates:
+        for x in range(board.width):
+            label = cell_label(x, 0)[:-1]
+            cx = left + x * (cell_size + gap) + cell_size / 2
+            columns.append({"label": label, "x": cx, "y": top - 15})
+        for y in range(board.height):
+            cy = top + y * (cell_size + gap) + cell_size / 2
+            rows.append({"label": str(y + 1), "x": left - 18, "y": cy})
+
+    reveal_all = active_context.status == "quit" or (
+        active_context.status == "lost" and active_options.reveal_mines_on_loss
+    )
+    cells: list[dict[str, object]] = []
+    for y in range(board.height):
+        for x in range(board.width):
+            cell = board.cells[y * board.width + x]
+            rect_x = left + x * (cell_size + gap)
+            rect_y = top + y * (cell_size + gap)
+            text = _render_cell(
+                cell,
+                x=x,
+                y=y,
+                symbols=symbols,
+                context=active_context,
+                reveal_all=reveal_all,
+            )
+            fill, stroke, text_fill = _svg_cell_colors(
+                cell,
+                x=x,
+                y=y,
+                context=active_context,
+                reveal_all=reveal_all,
+            )
+            cells.append(
+                {
+                    "x": rect_x,
+                    "y": rect_y,
+                    "text_x": rect_x + cell_size / 2,
+                    "text_y": rect_y + cell_size / 2,
+                    "size": cell_size,
+                    "text": text,
+                    "fill": fill,
+                    "stroke": stroke,
+                    "text_fill": text_fill,
+                }
+            )
+
+    return SvgBoard(
+        template="board.svg.j2",
+        template_dirs=(Path(__file__).with_name("templates"),),
+        data={
+            "width": width,
+            "height": height,
+            "title": title,
+            "subtitle": subtitle,
+            "columns": columns,
+            "rows": rows,
+            "cells": cells,
+        },
+        width=width,
+        height=height,
+    )
 
 
 def render_help() -> str:
@@ -234,6 +347,42 @@ def _status_line(context: RenderContext) -> str | None:
     if context.status == "quit":
         return "已结束本局。"
     return None
+
+
+def _svg_cell_colors(
+    cell: CellView,
+    *,
+    x: int,
+    y: int,
+    context: RenderContext,
+    reveal_all: bool,
+) -> tuple[str, str, str]:
+    if context.exploded_cell == (x, y):
+        return ("#ef4444", "#b91c1c", "#ffffff")
+    state = _state_value(cell)
+    if state == "flagged" and not reveal_all:
+        return ("#f59e0b", "#b45309", "#ffffff")
+    if state == "hidden" and not reveal_all:
+        return ("#334155", "#1e293b", "#dbeafe")
+    if cell.has_mine:
+        return ("#111827", "#030712", "#ffffff")
+    if cell.adjacent_mines <= 0:
+        return ("#ffffff", "#cbd5e1", "#94a3b8")
+    return ("#ffffff", "#cbd5e1", _number_color(cell.adjacent_mines))
+
+
+def _number_color(value: int) -> str:
+    colors = {
+        1: "#2563eb",
+        2: "#16a34a",
+        3: "#dc2626",
+        4: "#7c3aed",
+        5: "#b45309",
+        6: "#0891b2",
+        7: "#111827",
+        8: "#64748b",
+    }
+    return colors.get(value, "#64748b")
 
 
 def _validate_board(board: BoardView) -> None:

@@ -22,3 +22,10 @@ message and only use the `op`, `flg`, and `ch` verbs.
 
 Custom boards are bounded by plugin configuration. Defaults are 5-30 width,
 5-24 height, and 1-200 mines.
+
+## Rendering
+
+The default `render_mode` is `text`, which sends a compact plain-text board.
+Set `render_mode = "auto"` or `"image"` to use the optional RenderKit plugin for
+SVG-to-PNG board images. If RenderKit or its SVG backend is unavailable, the
+plugin falls back to text output.

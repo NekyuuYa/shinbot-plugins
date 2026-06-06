@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+import types
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 from shinbot_plugin_minesweeper import (
@@ -19,19 +24,32 @@ class _Handle:
 
 
 class _Logger:
+    def __init__(self) -> None:
+        self.debug_messages: list[tuple[object, ...]] = []
+
     def debug(self, *_args: object) -> None:
-        pass
+        self.debug_messages.append(_args)
 
 
 class _Ctx:
-    def __init__(self, *, text: str = "", session_id: str = "s1") -> None:
+    def __init__(
+        self,
+        *,
+        text: str = "",
+        session_id: str = "s1",
+        fail_image_send: bool = False,
+    ) -> None:
         self.text = text
         self.session_id = session_id
         self.user_id = "u1"
-        self.sent: list[str] = []
+        self.sent: list[Any] = []
         self.deleted: list[str] = []
+        self.fail_image_send = fail_image_send
 
-    async def send(self, content: str) -> _Handle:
+    async def send(self, content: Any) -> _Handle:
+        if self.fail_image_send and _is_image_content(content):
+            self.fail_image_send = False
+            raise RuntimeError("image upload failed")
         self.sent.append(content)
         return _Handle(f"m{len(self.sent)}")
 
@@ -41,6 +59,62 @@ class _Ctx:
 
 def _store() -> GameStore[GameState]:
     return MemoryGameStore(updated_at=lambda game: game.updated_at)
+
+
+def _is_image_content(content: Any) -> bool:
+    return isinstance(content, list) and any(
+        isinstance(item, dict) and item.get("type") == "img" for item in content
+    )
+
+
+def _install_fake_image_modules(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    available: bool = True,
+    fail_render: bool = False,
+) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    shinbot_module = types.ModuleType("shinbot")
+    schema_module = types.ModuleType("shinbot.schema")
+    elements_module = types.ModuleType("shinbot.schema.elements")
+
+    class MessageElement:
+        @classmethod
+        def img(cls, src: str, **kwargs: Any) -> dict[str, Any]:
+            return {"type": "img", "attrs": {"src": src, **kwargs}}
+
+    elements_module.__dict__["MessageElement"] = MessageElement
+
+    renderkit_module = types.ModuleType("shinbot_plugin_renderkit")
+
+    class Capabilities:
+        svg = available
+
+    class SvgRenderOptions:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
+    async def render_svg_template_to_file(*args: Any, **kwargs: Any) -> Any:
+        calls.append({"args": args, **kwargs})
+        if fail_render:
+            raise RuntimeError("render failed")
+
+        class Result:
+            path = Path("/tmp/minesweeper.png")
+            width = 320
+            height = 180
+
+        return Result()
+
+    renderkit_module.__dict__["SvgRenderOptions"] = SvgRenderOptions
+    renderkit_module.__dict__["probe_renderkit_capabilities"] = lambda: Capabilities()
+    renderkit_module.__dict__["render_svg_template_to_file"] = render_svg_template_to_file
+
+    monkeypatch.setitem(sys.modules, "shinbot", shinbot_module)
+    monkeypatch.setitem(sys.modules, "shinbot.schema", schema_module)
+    monkeypatch.setitem(sys.modules, "shinbot.schema.elements", elements_module)
+    monkeypatch.setitem(sys.modules, "shinbot_plugin_renderkit", renderkit_module)
+    return calls
 
 
 @pytest.mark.asyncio
@@ -74,6 +148,98 @@ async def test_start_and_shortcut_batch_updates_board() -> None:
     assert "扫雷 easy 9x9" in ctx.sent[-1]
     assert "本次：打开 a1 b1" in ctx.sent[-1]
     assert store.load(ctx.session_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_image_render_mode_sends_renderkit_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _install_fake_image_modules(monkeypatch)
+    ctx = _Ctx()
+    store = _store()
+    config = MinesweeperPluginConfig(
+        persist_games=False,
+        recall_old_boards=False,
+        render_mode="auto",
+    )
+
+    await _handle_root_command(
+        ctx,
+        "start easy",
+        store=store,
+        config=config,
+        logger=_Logger(),
+        render_dir=tmp_path,
+    )
+
+    sent = ctx.sent[-1]
+    assert isinstance(sent, list)
+    assert sent[0]["type"] == "img"
+    assert sent[0]["attrs"]["src"] == "/tmp/minesweeper.png"
+    assert calls[0]["args"][0] == "board.svg.j2"
+    assert calls[0]["data"]["title"].startswith("扫雷 easy")
+    assert calls[0]["output_dir"] == tmp_path
+    assert calls[0]["template_dirs"][0].name == "templates"
+
+
+@pytest.mark.asyncio
+async def test_image_render_mode_falls_back_to_text_when_renderkit_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_image_modules(monkeypatch, fail_render=True)
+    ctx = _Ctx()
+    store = _store()
+    config = MinesweeperPluginConfig(
+        persist_games=False,
+        recall_old_boards=False,
+        render_mode="auto",
+    )
+
+    await _handle_root_command(
+        ctx,
+        "start easy",
+        store=store,
+        config=config,
+        logger=_Logger(),
+        render_dir=tmp_path,
+    )
+
+    assert isinstance(ctx.sent[-1], str)
+    assert "扫雷 easy 9x9" in ctx.sent[-1]
+
+
+@pytest.mark.asyncio
+async def test_image_render_mode_falls_back_to_text_when_image_send_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_image_modules(monkeypatch)
+    ctx = _Ctx(fail_image_send=True)
+    store = _store()
+    logger = _Logger()
+    config = MinesweeperPluginConfig(
+        persist_games=False,
+        recall_old_boards=False,
+        render_mode="auto",
+    )
+
+    await _handle_root_command(
+        ctx,
+        "start easy",
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=tmp_path,
+    )
+
+    game = store.load(ctx.session_id)
+    assert game is not None
+    assert isinstance(ctx.sent[-1], str)
+    assert "扫雷 easy 9x9" in ctx.sent[-1]
+    assert game.board_message_ids == ["m1"]
+    assert logger.debug_messages
 
 
 @pytest.mark.asyncio
