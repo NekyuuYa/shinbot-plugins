@@ -1,0 +1,294 @@
+"""Tests for RenderKit browser backend lifecycle."""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import pytest
+
+from shinbot_plugin_renderkit import RenderOptions
+from shinbot_plugin_renderkit.backends import PlaywrightRenderBackend
+
+
+class _FakePage:
+    def __init__(self, tracker: _Tracker) -> None:
+        self._tracker = tracker
+        self.closed = False
+
+    async def set_content(self, html: str, **_kwargs: Any) -> None:
+        if self._tracker.fail_next_set_content:
+            self._tracker.fail_next_set_content = False
+            raise RuntimeError("set content failed")
+        self._tracker.html.append(html)
+
+    async def screenshot(self, **_kwargs: Any) -> bytes:
+        if self._tracker.fail_next_screenshot:
+            self._tracker.fail_next_screenshot = False
+            raise RuntimeError("screenshot failed")
+        self._tracker.active_pages += 1
+        self._tracker.max_active_pages = max(
+            self._tracker.max_active_pages,
+            self._tracker.active_pages,
+        )
+        await asyncio.sleep(0)
+        self._tracker.active_pages -= 1
+        return b"shot"
+
+    async def close(self) -> None:
+        self.closed = True
+        self._tracker.page_close_count += 1
+
+
+class _FakeContext:
+    def __init__(self, tracker: _Tracker, key: tuple[int, int, float]) -> None:
+        self._tracker = tracker
+        self.key = key
+        self.closed = False
+
+    async def new_page(self) -> _FakePage:
+        if self._tracker.fail_next_new_page:
+            self._tracker.fail_next_new_page = False
+            raise RuntimeError("context is closed")
+        self._tracker.page_count += 1
+        return _FakePage(self._tracker)
+
+    async def close(self) -> None:
+        self.closed = True
+        self._tracker.context_close_count += 1
+        if self._tracker.fail_context_close:
+            raise RuntimeError("context close failed")
+
+
+class _FakeBrowser:
+    def __init__(self, tracker: _Tracker) -> None:
+        self._tracker = tracker
+        self.connected = True
+        self.closed = False
+
+    def is_connected(self) -> bool:
+        return self.connected
+
+    async def new_context(
+        self,
+        *,
+        viewport: dict[str, int],
+        device_scale_factor: float,
+    ) -> _FakeContext:
+        key = (viewport["width"], viewport["height"], device_scale_factor)
+        self._tracker.context_keys.append(key)
+        return _FakeContext(self._tracker, key)
+
+    async def close(self) -> None:
+        self.closed = True
+        self.connected = False
+        self._tracker.browser_close_count += 1
+        if self._tracker.fail_browser_close:
+            raise RuntimeError("browser close failed")
+
+
+class _FakeChromium:
+    def __init__(self, tracker: _Tracker) -> None:
+        self._tracker = tracker
+
+    async def launch(self, **_kwargs: Any) -> _FakeBrowser:
+        self._tracker.launch_count += 1
+        browser = _FakeBrowser(self._tracker)
+        self._tracker.browsers.append(browser)
+        return browser
+
+
+class _FakePlaywright:
+    def __init__(self, tracker: _Tracker) -> None:
+        self.chromium = _FakeChromium(tracker)
+        self._tracker = tracker
+
+    async def stop(self) -> None:
+        self._tracker.playwright_stop_count += 1
+        if self._tracker.fail_playwright_stop:
+            raise RuntimeError("playwright stop failed")
+
+
+class _Tracker:
+    def __init__(self) -> None:
+        self.launch_count = 0
+        self.page_count = 0
+        self.page_close_count = 0
+        self.context_close_count = 0
+        self.browser_close_count = 0
+        self.playwright_stop_count = 0
+        self.active_pages = 0
+        self.max_active_pages = 0
+        self.context_keys: list[tuple[int, int, float]] = []
+        self.browsers: list[_FakeBrowser] = []
+        self.html: list[str] = []
+        self.fail_next_new_page = False
+        self.fail_next_set_content = False
+        self.fail_next_screenshot = False
+        self.fail_context_close = False
+        self.fail_browser_close = False
+        self.fail_playwright_stop = False
+
+
+class _FakePlaywrightBackend(PlaywrightRenderBackend):
+    def __init__(self, tracker: _Tracker, *, max_concurrency: int = 2) -> None:
+        super().__init__(max_concurrency=max_concurrency)
+        self._tracker = tracker
+
+    async def _start_playwright(self) -> _FakePlaywright:
+        return _FakePlaywright(self._tracker)
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_reuses_browser_and_context() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+    options = RenderOptions(width=320, height=180)
+
+    first = await backend.render_html_to_bytes("<main>one</main>", options)
+    second = await backend.render_html_to_bytes("<main>two</main>", options)
+    await backend.close()
+
+    assert first == b"shot"
+    assert second == b"shot"
+    assert tracker.launch_count == 1
+    assert tracker.context_keys == [(320, 180, 1.0)]
+    assert tracker.page_count == 2
+    assert tracker.page_close_count == 2
+    assert tracker.context_close_count == 1
+    assert tracker.browser_close_count == 1
+    assert tracker.playwright_stop_count == 1
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_uses_separate_context_per_viewport() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+
+    await backend.render_html_to_bytes("<main>small</main>", RenderOptions(width=320, height=180))
+    await backend.render_html_to_bytes("<main>large</main>", RenderOptions(width=640, height=360))
+    await backend.close()
+
+    assert tracker.launch_count == 1
+    assert tracker.context_keys == [(320, 180, 1.0), (640, 360, 1.0)]
+    assert tracker.context_close_count == 2
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_restarts_after_browser_disconnect() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+    options = RenderOptions(width=320, height=180)
+
+    await backend.render_html_to_bytes("<main>one</main>", options)
+    tracker.browsers[0].connected = False
+    await backend.render_html_to_bytes("<main>two</main>", options)
+    await backend.close()
+
+    assert tracker.launch_count == 2
+    assert tracker.browser_close_count == 2
+    assert tracker.playwright_stop_count == 2
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_evicts_context_when_new_page_fails() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+    options = RenderOptions(width=320, height=180)
+
+    await backend.render_html_to_bytes("<main>one</main>", options)
+    tracker.fail_next_new_page = True
+    with pytest.raises(RuntimeError, match="context is closed"):
+        await backend.render_html_to_bytes("<main>fail</main>", options)
+    await backend.render_html_to_bytes("<main>two</main>", options)
+    await backend.close()
+
+    assert tracker.launch_count == 1
+    assert tracker.context_keys == [(320, 180, 1.0), (320, 180, 1.0)]
+    assert tracker.context_close_count == 2
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_evicts_context_when_page_setup_fails() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+    options = RenderOptions(width=320, height=180)
+
+    await backend.render_html_to_bytes("<main>one</main>", options)
+    tracker.fail_next_set_content = True
+    with pytest.raises(RuntimeError, match="set content failed"):
+        await backend.render_html_to_bytes("<main>fail</main>", options)
+    await backend.render_html_to_bytes("<main>two</main>", options)
+    await backend.close()
+
+    assert tracker.context_keys == [(320, 180, 1.0), (320, 180, 1.0)]
+    assert tracker.context_close_count == 2
+    assert tracker.page_close_count == 3
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_evicts_context_when_screenshot_fails() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+    options = RenderOptions(width=320, height=180)
+
+    await backend.render_html_to_bytes("<main>one</main>", options)
+    tracker.fail_next_screenshot = True
+    with pytest.raises(RuntimeError, match="screenshot failed"):
+        await backend.render_html_to_bytes("<main>fail</main>", options)
+    await backend.render_html_to_bytes("<main>two</main>", options)
+    await backend.close()
+
+    assert tracker.context_keys == [(320, 180, 1.0), (320, 180, 1.0)]
+    assert tracker.context_close_count == 2
+    assert tracker.page_close_count == 3
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_close_is_idempotent_and_rejects_later_renders() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+
+    await backend.render_html_to_bytes("<main>one</main>", RenderOptions())
+    await backend.close()
+    await backend.close()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        await backend.render_html_to_bytes("<main>two</main>", RenderOptions())
+
+    assert tracker.browser_close_count == 1
+    assert tracker.playwright_stop_count == 1
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_close_continues_when_resources_fail_to_close() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker)
+
+    await backend.render_html_to_bytes("<main>one</main>", RenderOptions(width=320, height=180))
+    await backend.render_html_to_bytes("<main>two</main>", RenderOptions(width=640, height=360))
+    tracker.fail_context_close = True
+    tracker.fail_browser_close = True
+    tracker.fail_playwright_stop = True
+
+    await backend.close()
+
+    with pytest.raises(RuntimeError, match="closed"):
+        await backend.render_html_to_bytes("<main>three</main>", RenderOptions())
+    assert tracker.context_close_count == 2
+    assert tracker.browser_close_count == 1
+    assert tracker.playwright_stop_count == 1
+
+
+@pytest.mark.asyncio
+async def test_playwright_backend_limits_concurrent_pages() -> None:
+    tracker = _Tracker()
+    backend = _FakePlaywrightBackend(tracker, max_concurrency=1)
+
+    await asyncio.gather(
+        backend.render_html_to_bytes("<main>one</main>", RenderOptions()),
+        backend.render_html_to_bytes("<main>two</main>", RenderOptions()),
+    )
+    await backend.close()
+
+    assert tracker.max_active_pages == 1

@@ -1,0 +1,525 @@
+"""ShinBot plugin: session-scoped chat minesweeper."""
+
+from __future__ import annotations
+
+import re
+import sys
+import time
+import tomllib
+from collections.abc import Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, Field, ValidationError
+
+from .engine import (
+    BoardSpec,
+    CellOperationError,
+    GameAlreadyEndedError,
+    MinesweeperEngine,
+)
+from .models import GameState, Position
+from .parser import (
+    DIFFICULTIES,
+    CustomLimits,
+    GameSize,
+    ParseError,
+    RootCommand,
+    cell_label,
+    parse_root_command,
+    parse_shortcut_message,
+)
+from .renderer import RenderContext, RenderOptions, render_board, render_error, render_help
+from .store import GameStore, JsonGameStore, MemoryGameStore
+
+if TYPE_CHECKING:
+    from shinbot.core.plugins.context import Plugin
+
+__plugin_name__ = "Minesweeper"
+__plugin_description__ = "Session-scoped chat minesweeper game."
+
+_SHORTCUT_PATTERN = re.compile(r"^\s*,\s*(op|flg|ch)\b", re.IGNORECASE)
+_STORE: GameStore[GameState] | None = None
+_ENGINE = MinesweeperEngine()
+
+
+class MinesweeperPluginConfig(BaseModel):
+    """Configuration for the minesweeper plugin."""
+
+    default_difficulty: Literal["easy", "normal", "hard"] = "easy"
+    default_custom_width: int = Field(default=12, ge=5, le=60)
+    default_custom_height: int = Field(default=12, ge=5, le=40)
+    default_custom_mines: int = Field(default=20, ge=1, le=999)
+    max_width: int = Field(default=30, ge=5, le=60)
+    max_height: int = Field(default=24, ge=5, le=40)
+    max_mines: int = Field(default=200, ge=1, le=999)
+    allow_custom: bool = True
+    persist_games: bool = True
+    reveal_mines_on_loss: bool = True
+    show_coordinates: bool = True
+    ascii_symbols: bool = False
+    recall_old_boards: bool = True
+    keep_recent_board_messages: int = Field(default=2, ge=1, le=5)
+    session_idle_ttl_seconds: int = Field(default=86400, ge=60, le=604800)
+
+
+__plugin_config_class__ = MinesweeperPluginConfig
+
+
+def setup(plg: Plugin) -> None:
+    """Register minesweeper commands and comma shortcut route."""
+    from shinbot.core.dispatch.ingress import RouteDispatchContext
+    from shinbot.core.dispatch.routing import RouteCondition, RouteMatchMode, RouteRule
+
+    config = _load_plugin_config(plg.plugin_id)
+    store = _build_store(plg, config)
+
+    @plg.on_command(
+        "minesweeper",
+        aliases=["ms"],
+        description="在当前会话开始或操作扫雷游戏",
+        usage="/minesweeper start easy | /ms open a1 | ,op a1 | ,flg b2",
+        permission="cmd.minesweeper",
+    )
+    async def minesweeper_command(ctx: Any, args: str) -> None:
+        await _handle_root_command(ctx, args, store=store, config=config, logger=plg.logger)
+
+    @plg.on_route(
+        RouteCondition(
+            event_types=frozenset({"message-created"}),
+            custom_matcher=_matches_shortcut,
+        ),
+        rule_id="shinbot_plugin_minesweeper.shortcut",
+        priority=80,
+        match_mode=RouteMatchMode.NORMAL,
+    )
+    async def minesweeper_shortcut(context: RouteDispatchContext, _rule: RouteRule) -> None:
+        ctx = context.require_message_context()
+        if not ctx.has_permission("cmd.minesweeper"):
+            await ctx.send("权限不足：需要 cmd.minesweeper")
+            return
+        await _handle_shortcut(ctx, store=store, config=config, logger=plg.logger)
+
+    plg.logger.info("Minesweeper plugin loaded")
+
+
+def on_disable(_plg: Plugin) -> None:
+    """Clear transient store references on plugin disable."""
+    global _STORE
+    _STORE = None
+
+
+def _matches_shortcut(_event: Any, message: Any) -> bool:
+    text = message.get_text().strip()
+    return bool(_SHORTCUT_PATTERN.match(text))
+
+
+async def _handle_root_command(
+    ctx: Any,
+    args: str,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    game = store.load(ctx.session_id)
+    try:
+        command = _parse_root(args, game=game, config=config)
+    except ParseError as exc:
+        await ctx.send(render_error(str(exc)))
+        return
+
+    if command.action == "help":
+        await ctx.send(render_help())
+        return
+    if command.action == "start":
+        await _start_game(ctx, command, store=store, config=config, logger=logger)
+        return
+    if command.action == "restart":
+        await _restart_game(ctx, command, game, store=store, config=config, logger=logger)
+        return
+    if command.action == "status":
+        await _send_status(ctx, game, store=store, config=config, logger=logger)
+        return
+    if command.action == "quit":
+        await _quit_game(ctx, game, store=store, config=config, logger=logger)
+        return
+
+    await _apply_operation(ctx, command, game, store=store, config=config, logger=logger)
+
+
+async def _handle_shortcut(
+    ctx: Any,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    game = store.load(ctx.session_id)
+    if game is None or game.status != "active":
+        await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
+        return
+
+    try:
+        command = parse_shortcut_message(
+            ctx.text,
+            board_width=game.board.width,
+            board_height=game.board.height,
+        )
+    except ParseError as exc:
+        await ctx.send(render_error(str(exc)))
+        return
+    if command is None:
+        return
+
+    root = RootCommand(action=command.action, cells=command.cells)
+    await _apply_operation(ctx, root, game, store=store, config=config, logger=logger)
+
+
+async def _start_game(
+    ctx: Any,
+    command: RootCommand,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    existing = store.load(ctx.session_id)
+    if existing is not None and existing.status == "active":
+        await ctx.send("当前会话已有进行中的扫雷。使用 /ms status 查看，或 /ms restart 重开。")
+        return
+    size = command.size or _default_size(config)
+    try:
+        game = _create_game(ctx, size, config=config)
+    except ParseError as exc:
+        await ctx.send(render_error(str(exc)))
+        return
+    store.save(game)
+    await _send_board(ctx, game, store=store, config=config, logger=logger)
+
+
+async def _restart_game(
+    ctx: Any,
+    command: RootCommand,
+    game: GameState | None,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    size = command.size or _default_size(config)
+    if size.kind == "current":
+        if game is None:
+            await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
+            return
+        size = _size_from_existing_game(game)
+    try:
+        new_game = _create_game(ctx, size, config=config)
+    except ParseError as exc:
+        await ctx.send(render_error(str(exc)))
+        return
+    if game is not None:
+        new_game.board_message_ids = list(game.board_message_ids)
+    store.save(new_game)
+    await _send_board(ctx, new_game, store=store, config=config, logger=logger)
+
+
+async def _send_status(
+    ctx: Any,
+    game: GameState | None,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    if game is None:
+        await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
+        return
+    await ctx.send(_render_game_board(game, config=config))
+
+
+async def _quit_game(
+    ctx: Any,
+    game: GameState | None,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    if game is None:
+        await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
+        return
+    try:
+        _ENGINE.quit_game(game)
+    except GameAlreadyEndedError:
+        pass
+    game.updated_at = time.time()
+    game.last_action = "结束本局"
+    store.save(game)
+    await _send_board(ctx, game, store=store, config=config, logger=logger)
+
+
+async def _apply_operation(
+    ctx: Any,
+    command: RootCommand,
+    game: GameState | None,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    if game is None:
+        await ctx.send("当前会话没有进行中的扫雷。使用 /ms start easy 开始。")
+        return
+    if game.status != "active":
+        await ctx.send("本局已经结束。使用 /ms restart 重开。")
+        return
+
+    positions = [Position(cell.x, cell.y) for cell in command.cells]
+    labels = " ".join(cell.label.lower() for cell in command.cells)
+    try:
+        if command.action == "open":
+            result = _ENGINE.open_many(game, positions)
+            game.last_action = f"打开 {labels}"
+        elif command.action == "flag":
+            result = _ENGINE.toggle_flags(game, positions)
+            game.last_action = f"标记 {labels}"
+        elif command.action == "chord":
+            result = _ENGINE.chord_many(game, positions)
+            game.last_action = f"连开 {labels}"
+        else:
+            await ctx.send(render_help())
+            return
+    except (CellOperationError, GameAlreadyEndedError, ValueError) as exc:
+        await ctx.send(render_error(_translate_engine_error(str(exc))))
+        return
+
+    if result.status == "lost":
+        exploded = _exploded_cell(game)
+        game.last_action = f"踩雷 {cell_label(*exploded).lower()}" if exploded else "踩雷"
+    elif result.status == "won":
+        game.last_action = "胜利"
+
+    store.save(game)
+    await _send_board(ctx, game, store=store, config=config, logger=logger)
+
+
+async def _send_board(
+    ctx: Any,
+    game: GameState,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    handle = await ctx.send(_render_game_board(game, config=config))
+    if getattr(handle, "message_id", ""):
+        game.board_message_ids.append(str(handle.message_id))
+    await _recall_old_boards(ctx, game, config=config, logger=logger)
+    store.save(game)
+
+
+def _render_game_board(game: GameState, *, config: MinesweeperPluginConfig) -> str:
+    context = RenderContext(
+        difficulty=game.difficulty,
+        status=game.status,
+        moves=game.moves,
+        last_action=game.last_action or None,
+        exploded_cell=_exploded_cell(game),
+    )
+    options = RenderOptions(
+        ascii=config.ascii_symbols,
+        show_coordinates=config.show_coordinates,
+        reveal_mines_on_loss=config.reveal_mines_on_loss,
+    )
+    return render_board(game.board, context=context, options=options)
+
+
+async def _recall_old_boards(
+    ctx: Any,
+    game: GameState,
+    *,
+    config: MinesweeperPluginConfig,
+    logger: Any,
+) -> None:
+    if not config.recall_old_boards:
+        return
+    keep = config.keep_recent_board_messages
+    if len(game.board_message_ids) <= keep:
+        return
+    old_ids = game.board_message_ids[:-keep]
+    game.board_message_ids = game.board_message_ids[-keep:]
+    for message_id in old_ids:
+        try:
+            await ctx.delete_msg(message_id)
+        except Exception as exc:
+            logger.debug("Minesweeper board recall failed for %s: %s", message_id, exc)
+
+
+def _parse_root(
+    args: str,
+    *,
+    game: GameState | None,
+    config: MinesweeperPluginConfig,
+) -> RootCommand:
+    if game is None:
+        return parse_root_command(
+            args,
+            default_difficulty=config.default_difficulty,
+            limits=_limits(config),
+        )
+    return parse_root_command(
+        args,
+        default_difficulty=config.default_difficulty,
+        limits=_limits(config),
+        board_width=game.board.width,
+        board_height=game.board.height,
+    )
+
+
+def _create_game(ctx: Any, size: GameSize, *, config: MinesweeperPluginConfig) -> GameState:
+    spec = _spec_from_size(size, config=config)
+    return _ENGINE.create_game(
+        session_id=ctx.session_id,
+        spec=spec,
+        owner_user_id=ctx.user_id or None,
+    )
+
+
+def _spec_from_size(size: GameSize, *, config: MinesweeperPluginConfig) -> BoardSpec:
+    if size.kind == "custom" and not config.allow_custom:
+        raise ParseError("当前配置不允许自定义棋盘。")
+    width = size.width if size.width is not None else config.default_custom_width
+    height = size.height if size.height is not None else config.default_custom_height
+    mines = size.mines if size.mines is not None else config.default_custom_mines
+    _validate_size_limits(width=width, height=height, mines=mines, config=config)
+    return BoardSpec(
+        width=width,
+        height=height,
+        mines=mines,
+        difficulty=size.difficulty or "custom",
+    )
+
+
+def _size_from_existing_game(game: GameState) -> GameSize:
+    if game.difficulty in DIFFICULTIES:
+        width, height, mines = DIFFICULTIES[game.difficulty]
+        if (game.board.width, game.board.height, game.board.mine_count) == (
+            width,
+            height,
+            mines,
+        ):
+            return GameSize(
+                kind="difficulty",
+                difficulty=game.difficulty,
+                width=width,
+                height=height,
+                mines=mines,
+            )
+    return GameSize(
+        kind="custom",
+        width=game.board.width,
+        height=game.board.height,
+        mines=game.board.mine_count,
+    )
+
+
+def _default_size(config: MinesweeperPluginConfig) -> GameSize:
+    width, height, mines = DIFFICULTIES[config.default_difficulty]
+    return GameSize(
+        kind="difficulty",
+        difficulty=config.default_difficulty,
+        width=width,
+        height=height,
+        mines=mines,
+    )
+
+
+def _limits(config: MinesweeperPluginConfig) -> CustomLimits:
+    return CustomLimits(
+        max_width=config.max_width,
+        max_height=config.max_height,
+        max_mines=config.max_mines,
+    )
+
+
+def _validate_size_limits(
+    *,
+    width: int,
+    height: int,
+    mines: int,
+    config: MinesweeperPluginConfig,
+) -> None:
+    limits = _limits(config)
+    if width < limits.min_width or width > limits.max_width:
+        raise ParseError(f"宽度必须在 {limits.min_width}-{limits.max_width} 之间。")
+    if height < limits.min_height or height > limits.max_height:
+        raise ParseError(f"高度必须在 {limits.min_height}-{limits.max_height} 之间。")
+    if mines < limits.min_mines or mines > limits.max_mines:
+        raise ParseError(f"雷数必须在 {limits.min_mines}-{limits.max_mines} 之间。")
+    if mines >= width * height:
+        raise ParseError("雷数必须小于格子总数。")
+
+
+def _exploded_cell(game: GameState) -> tuple[int, int] | None:
+    for y in range(game.board.height):
+        for x in range(game.board.width):
+            if game.board.cell_at(Position(x, y)).exploded:
+                return (x, y)
+    return None
+
+
+def _translate_engine_error(message: str) -> str:
+    translations = {
+        "Cannot flag a revealed cell.": "不能标记已经打开的格子。",
+        "Cannot open a flagged cell.": "不能打开已标记的格子。",
+        "Can only chord a revealed cell.": "只能对已打开的数字格连开。",
+        "Can only chord a numbered cell.": "只能对数字格连开。",
+        "Game has already ended.": "本局已经结束。使用 /ms restart 重开。",
+    }
+    return translations.get(message, message)
+
+
+def _build_store(plg: Plugin, config: MinesweeperPluginConfig) -> GameStore[GameState]:
+    global _STORE
+    if config.persist_games:
+        _STORE = JsonGameStore(
+            plg.data_dir / "games",
+            serialize=lambda game: game.to_dict(),
+            deserialize=GameState.from_dict,
+            updated_at=lambda game: game.updated_at,
+        )
+    else:
+        _STORE = MemoryGameStore(updated_at=lambda game: game.updated_at)
+    _STORE.cleanup_expired(time.time(), config.session_idle_ttl_seconds)
+    return _STORE
+
+
+def _resolve_config_path(argv: Sequence[str] | None = None) -> Path:
+    from shinbot.core.application.paths import DEFAULT_CONFIG_PATH
+
+    args = list(sys.argv[1:] if argv is None else argv)
+    for index, value in enumerate(args):
+        if value == "--config" and index + 1 < len(args):
+            return Path(args[index + 1])
+        if value.startswith("--config="):
+            return Path(value.split("=", 1)[1])
+    return DEFAULT_CONFIG_PATH
+
+
+def _load_plugin_config(plugin_id: str) -> MinesweeperPluginConfig:
+    from shinbot.core.plugins.config import plugin_config_block
+
+    path = _resolve_config_path()
+    raw: dict[str, Any] = {}
+    try:
+        if path.exists():
+            with path.open("rb") as file_obj:
+                payload = tomllib.load(file_obj)
+            raw = plugin_config_block(payload, plugin_id)
+    except Exception:
+        raw = {}
+    try:
+        return MinesweeperPluginConfig.model_validate(raw)
+    except ValidationError:
+        return MinesweeperPluginConfig()

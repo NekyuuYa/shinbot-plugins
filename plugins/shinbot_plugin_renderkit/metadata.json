@@ -1,0 +1,10 @@
+{
+  "id": "shinbot_plugin_renderkit",
+  "name": "RenderKit",
+  "version": "0.1.0",
+  "author": "ShinBot Contributors",
+  "description": "General-purpose HTML/CSS template rendering utilities for ShinBot plugins.",
+  "entry": "shinbot_plugin_renderkit/__init__.py",
+  "role": "logic",
+  "permissions": []
+}
