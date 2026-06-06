@@ -7,7 +7,7 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from .models import RenderOptions, SvgRenderOptions
+from .models import RenderOptions, SvgRenderOptions, TypstRenderOptions
 
 logger = logging.getLogger(__name__)
 
@@ -349,3 +349,85 @@ class CairoSvgRenderBackend:
                 return cursor + 1
             cursor += 1
         return len(text)
+
+
+class TypstCliRenderBackend:
+    """Render Typst source through the Typst CLI."""
+
+    def __init__(
+        self,
+        *,
+        executable_path: str = "typst",
+        max_concurrency: int = 2,
+    ) -> None:
+        """Create a Typst CLI backend.
+
+        Args:
+            executable_path: Typst executable path or command name.
+            max_concurrency: Maximum concurrent Typst compile operations.
+        """
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be positive.")
+        self._executable_path = executable_path
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+
+    async def render_typst_to_bytes(self, source: str, options: TypstRenderOptions) -> bytes:
+        """Render Typst source to PNG bytes."""
+        options.validate()
+        command = self._build_command(options)
+        async with self._semaphore:
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *command,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "Typst CLI is required for RenderKit Typst rendering. "
+                    "Install typst or configure typst_executable_path."
+                ) from exc
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(source.encode("utf-8")),
+                    timeout=options.timeout_ms / 1000,
+                )
+            except TimeoutError as exc:
+                process.kill()
+                await process.wait()
+                raise RuntimeError("Typst rendering timed out.") from exc
+        if process.returncode != 0:
+            message = stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"Typst rendering failed: {message or process.returncode}")
+        if not stdout.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("Typst did not return PNG image bytes.")
+        return stdout
+
+    def _build_command(self, options: TypstRenderOptions) -> list[str]:
+        command = [
+            self._executable_path,
+            "compile",
+            "--format",
+            options.image_format,
+            "--pages",
+            str(options.page),
+            "--ppi",
+            str(options.ppi),
+        ]
+        if options.root is not None:
+            command.extend(["--root", str(options.root)])
+        for font_path in options.font_paths:
+            command.extend(["--font-path", str(font_path)])
+        if options.package_path is not None:
+            command.extend(["--package-path", str(options.package_path)])
+        if options.package_cache_path is not None:
+            command.extend(["--package-cache-path", str(options.package_cache_path)])
+        if options.ignore_system_fonts:
+            command.append("--ignore-system-fonts")
+        if options.jobs is not None:
+            command.extend(["--jobs", str(options.jobs)])
+        for key, value in sorted((options.inputs or {}).items()):
+            command.extend(["--input", f"{key}={value}"])
+        command.extend(["-", "-"])
+        return command

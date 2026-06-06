@@ -9,10 +9,13 @@ import pytest
 from shinbot_plugin_renderkit import (
     RenderOptions,
     SvgRenderOptions,
+    TypstRenderOptions,
     close_default_backend,
     close_default_svg_backend,
+    close_default_typst_backend,
     configure_default_backend,
     configure_default_svg_backend,
+    configure_default_typst_backend,
     render_html_to_bytes,
     render_html_to_file,
     render_svg_template_to_file,
@@ -20,6 +23,9 @@ from shinbot_plugin_renderkit import (
     render_svg_to_file,
     render_template_text,
     render_template_to_file,
+    render_typst_template_to_file,
+    render_typst_to_bytes,
+    render_typst_to_file,
 )
 
 
@@ -76,6 +82,39 @@ class FailingCloseFakeSvgBackend(FakeSvgBackend):
         raise RuntimeError("close failed")
 
 
+class FakeTypstBackend:
+    """Deterministic Typst render backend for tests."""
+
+    def __init__(self, payload: bytes | None = None) -> None:
+        self.payload = payload or _png_bytes(width=320, height=180)
+        self.calls: list[tuple[str, TypstRenderOptions]] = []
+
+    async def render_typst_to_bytes(self, source: str, options: TypstRenderOptions) -> bytes:
+        self.calls.append((source, options))
+        return self.payload
+
+
+class ClosableFakeTypstBackend(FakeTypstBackend):
+    """Fake Typst backend that records close calls."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def _png_bytes(*, width: int, height: int) -> bytes:
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        b"\x00\x00\x00\rIHDR"
+        + width.to_bytes(4, "big")
+        + height.to_bytes(4, "big")
+        + b"\x08\x06\x00\x00\x00"
+    )
+
+
 @pytest.mark.asyncio
 async def test_render_html_to_bytes_uses_injected_backend() -> None:
     backend = FakeBackend(payload=b"png")
@@ -96,6 +135,21 @@ async def test_render_svg_to_bytes_uses_injected_backend() -> None:
 
     assert payload == b"png"
     assert backend.calls == [("<svg />", options)]
+
+
+@pytest.mark.asyncio
+async def test_render_typst_to_bytes_uses_injected_backend() -> None:
+    backend = FakeTypstBackend(payload=_png_bytes(width=200, height=100))
+    options = TypstRenderOptions(page=2, ppi=96)
+
+    payload = await render_typst_to_bytes(
+        "#set page(width: 200pt)\nHello",
+        options=options,
+        backend=backend,
+    )
+
+    assert payload == _png_bytes(width=200, height=100)
+    assert backend.calls == [("#set page(width: 200pt)\nHello", options)]
 
 
 @pytest.mark.asyncio
@@ -138,6 +192,19 @@ async def test_default_svg_backend_is_cleared_when_close_fails() -> None:
     await close_default_svg_backend()
 
     assert payload == b"replacement"
+
+
+@pytest.mark.asyncio
+async def test_default_typst_backend_can_be_configured_and_closed() -> None:
+    backend = ClosableFakeTypstBackend()
+    configure_default_typst_backend(backend)
+
+    payload = await render_typst_to_bytes("Hello")
+    await close_default_typst_backend()
+
+    assert payload == _png_bytes(width=320, height=180)
+    assert backend.calls[0][0] == "Hello"
+    assert backend.closed is True
 
 
 @pytest.mark.asyncio
@@ -192,6 +259,36 @@ async def test_render_svg_to_file_writes_and_reuses_cache(tmp_path: Path) -> Non
 
 
 @pytest.mark.asyncio
+async def test_render_typst_to_file_writes_and_reuses_cache(tmp_path: Path) -> None:
+    backend = FakeTypstBackend(payload=_png_bytes(width=640, height=360))
+    options = TypstRenderOptions(page=1, ppi=144)
+
+    first = await render_typst_to_file(
+        "#set page(width: 320pt, height: 180pt)\nHello",
+        output_dir=tmp_path,
+        options=options,
+        backend=backend,
+    )
+    second = await render_typst_to_file(
+        "#set page(width: 320pt, height: 180pt)\nHello",
+        output_dir=tmp_path,
+        options=options,
+        backend=backend,
+    )
+
+    assert first.path.read_bytes() == _png_bytes(width=640, height=360)
+    assert first.path == second.path
+    assert first.path.name.startswith("render-typst-")
+    assert first.width == 640
+    assert first.height == 360
+    assert first.cached is False
+    assert second.cached is True
+    assert second.width == 640
+    assert second.height == 360
+    assert len(backend.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_render_html_to_file_accepts_explicit_filename(tmp_path: Path) -> None:
     backend = FakeBackend(payload=b"named")
 
@@ -221,6 +318,24 @@ async def test_render_svg_to_file_accepts_explicit_filename(tmp_path: Path) -> N
 
     assert result.path == tmp_path / "icon.png"
     assert result.path.read_bytes() == b"named-svg"
+
+
+@pytest.mark.asyncio
+async def test_render_typst_to_file_accepts_explicit_filename(tmp_path: Path) -> None:
+    backend = FakeTypstBackend(payload=_png_bytes(width=120, height=80))
+
+    result = await render_typst_to_file(
+        "Hello",
+        output_dir=tmp_path,
+        backend=backend,
+        cache=False,
+        filename="typst.png",
+    )
+
+    assert result.path == tmp_path / "typst.png"
+    assert result.path.read_bytes() == _png_bytes(width=120, height=80)
+    assert result.width == 120
+    assert result.height == 80
 
 
 def test_render_template_text_from_raw_template() -> None:
@@ -272,6 +387,21 @@ async def test_render_svg_template_to_file_renders_template_data(tmp_path: Path)
     assert backend.calls[0][0] == "<svg><text>Badge</text></svg>"
 
 
+@pytest.mark.asyncio
+async def test_render_typst_template_to_file_renders_template_data(tmp_path: Path) -> None:
+    backend = FakeTypstBackend(payload=_png_bytes(width=100, height=50))
+
+    result = await render_typst_template_to_file(
+        '#set page(width: 100pt, height: 50pt)\n= {{ title }}',
+        data={"title": "Badge"},
+        output_dir=tmp_path,
+        backend=backend,
+    )
+
+    assert result.path.read_bytes() == _png_bytes(width=100, height=50)
+    assert backend.calls[0][0] == "#set page(width: 100pt, height: 50pt)\n= Badge"
+
+
 def test_render_options_validate_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="width"):
         RenderOptions(width=0).validate()
@@ -289,3 +419,17 @@ def test_svg_render_options_validate_rejects_invalid_values() -> None:
 
     with pytest.raises(ValueError, match="scale"):
         SvgRenderOptions(scale=4.1).validate()
+
+
+def test_typst_render_options_validate_rejects_invalid_values() -> None:
+    with pytest.raises(ValueError, match="page"):
+        TypstRenderOptions(page=0).validate()
+
+    with pytest.raises(ValueError, match="PPI"):
+        TypstRenderOptions(ppi=0).validate()
+
+    with pytest.raises(ValueError, match="PPI"):
+        TypstRenderOptions(ppi=1201).validate()
+
+    with pytest.raises(ValueError, match="jobs"):
+        TypstRenderOptions(jobs=0).validate()

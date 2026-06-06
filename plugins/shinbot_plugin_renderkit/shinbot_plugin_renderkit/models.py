@@ -8,6 +8,7 @@ from typing import Literal, Protocol
 
 ImageFormat = Literal["png", "jpeg"]
 SvgImageFormat = Literal["png"]
+TypstImageFormat = Literal["png"]
 
 
 class RenderBackend(Protocol):
@@ -33,6 +34,20 @@ class SvgRenderBackend(Protocol):
 
 class ClosableSvgRenderBackend(SvgRenderBackend, Protocol):
     """SVG render backend that owns resources and can be closed."""
+
+    async def close(self) -> None:
+        """Release backend resources."""
+
+
+class TypstRenderBackend(Protocol):
+    """Backend capable of turning Typst source into image bytes."""
+
+    async def render_typst_to_bytes(self, source: str, options: TypstRenderOptions) -> bytes:
+        """Render Typst source to image bytes."""
+
+
+class ClosableTypstRenderBackend(TypstRenderBackend, Protocol):
+    """Typst render backend that owns resources and can be closed."""
 
     async def close(self) -> None:
         """Release backend resources."""
@@ -103,6 +118,48 @@ class SvgRenderOptions:
             raise ValueError("Timeout must be positive.")
         if self.image_format != "png":
             raise ValueError(f"Unsupported SVG image format: {self.image_format}.")
+
+    @property
+    def suffix(self) -> str:
+        """Return the file suffix for this render format."""
+        return ".png"
+
+    @property
+    def mime_type(self) -> str:
+        """Return the MIME type for this render format."""
+        return "image/png"
+
+
+@dataclass(frozen=True, slots=True)
+class TypstRenderOptions:
+    """Options for Typst raster rendering."""
+
+    image_format: TypstImageFormat = "png"
+    page: int = 1
+    ppi: int = 144
+    timeout_ms: int = 30_000
+    root: str | Path | None = None
+    font_paths: tuple[str | Path, ...] = ()
+    package_path: str | Path | None = None
+    package_cache_path: str | Path | None = None
+    ignore_system_fonts: bool = False
+    inputs: dict[str, str] | None = None
+    jobs: int | None = None
+
+    def validate(self) -> None:
+        """Validate Typst render options before a backend is invoked."""
+        if self.image_format != "png":
+            raise ValueError(f"Unsupported Typst image format: {self.image_format}.")
+        if self.page <= 0:
+            raise ValueError("Typst page must be positive.")
+        if self.ppi <= 0:
+            raise ValueError("Typst PPI must be positive.")
+        if self.ppi > 1200:
+            raise ValueError("Typst PPI must be no greater than 1200.")
+        if self.timeout_ms <= 0:
+            raise ValueError("Timeout must be positive.")
+        if self.jobs is not None and self.jobs <= 0:
+            raise ValueError("Typst jobs must be positive.")
 
     @property
     def suffix(self) -> str:

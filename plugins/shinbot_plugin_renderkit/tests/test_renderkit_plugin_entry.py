@@ -49,6 +49,9 @@ def test_register_render_tool_declares_public_html_tool(tmp_path: Path) -> None:
     assert plugin.tools[1]["name"] == "render_svg_image"
     assert "svg" in plugin.tools[1]["tags"]
     assert plugin.tools[1]["input_schema"]["required"] == ["svg"]
+    assert plugin.tools[2]["name"] == "render_typst_image"
+    assert "typst" in plugin.tools[2]["tags"]
+    assert plugin.tools[2]["input_schema"]["required"] == ["source"]
 
 
 @pytest.mark.asyncio
@@ -97,6 +100,21 @@ async def test_svg_render_tool_rejects_zero_scale(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="scale"):
         await handler("<svg />", scale=0)
+
+
+@pytest.mark.asyncio
+async def test_typst_render_tool_rejects_invalid_page_and_ppi(tmp_path: Path) -> None:
+    plugin = _FakePlugin(tmp_path)
+
+    _register_render_tool(plugin, RenderKitPluginConfig(), public_visibility="public")
+    handler = plugin.tools[2]["handler"]
+
+    with pytest.raises(ValueError, match="page"):
+        await handler("Hello", page=0)
+    with pytest.raises(ValueError, match="PPI"):
+        await handler("Hello", ppi=0)
+    with pytest.raises(ValueError, match="PPI"):
+        await handler("Hello", ppi=1201)
 
 
 def test_load_plugin_config_reads_shinbot_config_block(

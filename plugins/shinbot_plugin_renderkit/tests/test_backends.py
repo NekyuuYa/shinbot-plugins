@@ -9,8 +9,12 @@ from typing import Any
 
 import pytest
 
-from shinbot_plugin_renderkit import RenderOptions, SvgRenderOptions
-from shinbot_plugin_renderkit.backends import CairoSvgRenderBackend, PlaywrightRenderBackend
+from shinbot_plugin_renderkit import RenderOptions, SvgRenderOptions, TypstRenderOptions
+from shinbot_plugin_renderkit.backends import (
+    CairoSvgRenderBackend,
+    PlaywrightRenderBackend,
+    TypstCliRenderBackend,
+)
 
 
 class _FakePage:
@@ -378,3 +382,50 @@ async def test_cairosvg_backend_limits_concurrent_renders(monkeypatch: pytest.Mo
     )
 
     assert max_active == 1
+
+
+def test_typst_cli_backend_builds_compile_command() -> None:
+    backend = TypstCliRenderBackend(executable_path="/usr/bin/typst", max_concurrency=1)
+    options = TypstRenderOptions(
+        page=2,
+        ppi=96,
+        root="/work",
+        font_paths=("/fonts/a", "/fonts/b"),
+        package_path="/packages",
+        package_cache_path="/cache",
+        ignore_system_fonts=True,
+        inputs={"theme": "dark", "title": "Card"},
+        jobs=1,
+    )
+
+    command = backend._build_command(options)
+
+    assert command == [
+        "/usr/bin/typst",
+        "compile",
+        "--format",
+        "png",
+        "--pages",
+        "2",
+        "--ppi",
+        "96",
+        "--root",
+        "/work",
+        "--font-path",
+        "/fonts/a",
+        "--font-path",
+        "/fonts/b",
+        "--package-path",
+        "/packages",
+        "--package-cache-path",
+        "/cache",
+        "--ignore-system-fonts",
+        "--jobs",
+        "1",
+        "--input",
+        "theme=dark",
+        "--input",
+        "title=Card",
+        "-",
+        "-",
+    ]

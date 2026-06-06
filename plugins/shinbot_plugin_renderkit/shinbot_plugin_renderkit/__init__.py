@@ -1,4 +1,4 @@
-"""ShinBot plugin: general-purpose HTML/CSS and SVG image rendering."""
+"""ShinBot plugin: general-purpose HTML/CSS, SVG, and Typst image rendering."""
 
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ from pydantic import BaseModel, Field, ValidationError
 from .api import (
     close_default_backend,
     close_default_svg_backend,
+    close_default_typst_backend,
     configure_default_backend,
     configure_default_svg_backend,
+    configure_default_typst_backend,
     render_html_to_bytes,
     render_html_to_file,
     render_svg_template_to_bytes,
@@ -23,16 +25,22 @@ from .api import (
     render_svg_to_file,
     render_template_to_bytes,
     render_template_to_file,
+    render_typst_template_to_bytes,
+    render_typst_template_to_file,
+    render_typst_to_bytes,
+    render_typst_to_file,
 )
-from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend
-from .models import ImageFormat, RenderOptions, RenderResult, SvgRenderOptions
+from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend, TypstCliRenderBackend
+from .models import ImageFormat, RenderOptions, RenderResult, SvgRenderOptions, TypstRenderOptions
 from .template import render_template_text
 
 if TYPE_CHECKING:
     from shinbot.core.plugins.context import Plugin
 
 __plugin_name__ = "RenderKit"
-__plugin_description__ = "General-purpose HTML/CSS and SVG template rendering for ShinBot plugins."
+__plugin_description__ = (
+    "General-purpose HTML/CSS, SVG, and Typst template rendering for ShinBot plugins."
+)
 
 
 class RenderKitPluginConfig(BaseModel):
@@ -44,6 +52,7 @@ class RenderKitPluginConfig(BaseModel):
     default_timeout_ms: int = Field(default=30_000, ge=1000, le=120_000)
     max_concurrency: int = Field(default=2, ge=1, le=16)
     chromium_executable_path: str | None = None
+    typst_executable_path: str = "typst"
     cache_files: bool = True
     tool_enabled: bool = True
 
@@ -61,6 +70,12 @@ def setup(plg: Plugin) -> None:
         )
     )
     configure_default_svg_backend(CairoSvgRenderBackend(max_concurrency=config.max_concurrency))
+    configure_default_typst_backend(
+        TypstCliRenderBackend(
+            executable_path=config.typst_executable_path,
+            max_concurrency=config.max_concurrency,
+        )
+    )
     if not config.tool_enabled:
         plg.logger.info("RenderKit plugin loaded without tool registration")
         return
@@ -78,6 +93,7 @@ async def on_disable(_plg: Plugin) -> None:
     """Close RenderKit browser resources when the plugin is disabled."""
     await close_default_backend()
     await close_default_svg_backend()
+    await close_default_typst_backend()
 
 
 def _register_render_tool(
@@ -199,6 +215,54 @@ def _register_render_tool(
         )
         return result.to_dict()
 
+    @plg.tool(
+        name="render_typst_image",
+        display_name="Render Typst Image",
+        description="Render standard Typst source to a PNG image file.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "source": {"type": "string"},
+                "page": {"type": "integer", "minimum": 1},
+                "ppi": {"type": "integer", "minimum": 1, "maximum": 1200},
+            },
+            "required": ["source"],
+            "additionalProperties": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "mime_type": {"type": "string"},
+                "width": {"type": "integer"},
+                "height": {"type": "integer"},
+                "cached": {"type": "boolean"},
+            },
+            "required": ["path", "mime_type", "width", "height", "cached"],
+            "additionalProperties": False,
+        },
+        visibility=public_visibility,
+        timeout_seconds=120.0,
+        tags=["render", "typst", "image"],
+    )
+    async def render_typst_image(
+        source: str,
+        page: int = 1,
+        ppi: int = 144,
+    ) -> dict[str, object]:
+        options = TypstRenderOptions(
+            page=page,
+            ppi=ppi,
+            timeout_ms=config.default_timeout_ms,
+        )
+        result = await render_typst_to_file(
+            source,
+            output_dir=Path(plg.data_dir) / "renders",
+            options=options,
+            cache=config.cache_files,
+        )
+        return result.to_dict()
+
 
 def _image_format(value: str) -> ImageFormat:
     formats: dict[str, ImageFormat] = {"png": "png", "jpeg": "jpeg"}
@@ -243,10 +307,13 @@ __all__ = [
     "RenderOptions",
     "RenderResult",
     "SvgRenderOptions",
+    "TypstRenderOptions",
     "close_default_backend",
     "close_default_svg_backend",
+    "close_default_typst_backend",
     "configure_default_backend",
     "configure_default_svg_backend",
+    "configure_default_typst_backend",
     "render_html_to_bytes",
     "render_html_to_file",
     "render_svg_template_to_bytes",
@@ -256,4 +323,8 @@ __all__ = [
     "render_template_text",
     "render_template_to_bytes",
     "render_template_to_file",
+    "render_typst_template_to_bytes",
+    "render_typst_template_to_file",
+    "render_typst_to_bytes",
+    "render_typst_to_file",
 ]

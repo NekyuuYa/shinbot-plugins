@@ -1,7 +1,7 @@
 [project]
 name = "shinbot-plugin-renderkit"
-version = "0.2.0"
-description = "General-purpose HTML/CSS and SVG rendering utilities for ShinBot plugins."
+version = "0.3.0"
+description = "General-purpose HTML/CSS, SVG, and Typst rendering utilities for ShinBot plugins."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

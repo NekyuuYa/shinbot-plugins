@@ -9,14 +9,24 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend
-from .models import RenderBackend, RenderOptions, RenderResult, SvgRenderBackend, SvgRenderOptions
+from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend, TypstCliRenderBackend
+from .models import (
+    RenderBackend,
+    RenderOptions,
+    RenderResult,
+    SvgRenderBackend,
+    SvgRenderOptions,
+    TypstRenderBackend,
+    TypstRenderOptions,
+)
 from .template import render_template_text
 
 _DEFAULT_BACKEND: RenderBackend | None = None
 _DEFAULT_BACKEND_LOCK = threading.RLock()
 _DEFAULT_SVG_BACKEND: SvgRenderBackend | None = None
 _DEFAULT_SVG_BACKEND_LOCK = threading.RLock()
+_DEFAULT_TYPST_BACKEND: TypstRenderBackend | None = None
+_DEFAULT_TYPST_BACKEND_LOCK = threading.RLock()
 
 
 def configure_default_backend(backend: RenderBackend | None) -> None:
@@ -79,6 +89,37 @@ async def close_default_svg_backend() -> None:
                 _DEFAULT_SVG_BACKEND = None
 
 
+def configure_default_typst_backend(backend: TypstRenderBackend | None) -> None:
+    """Set the process-local default Typst backend used when callers do not pass one."""
+    global _DEFAULT_TYPST_BACKEND
+    with _DEFAULT_TYPST_BACKEND_LOCK:
+        _DEFAULT_TYPST_BACKEND = backend
+
+
+def get_default_typst_backend() -> TypstRenderBackend:
+    """Return the lazily-created default Typst render backend."""
+    global _DEFAULT_TYPST_BACKEND
+    with _DEFAULT_TYPST_BACKEND_LOCK:
+        if _DEFAULT_TYPST_BACKEND is None:
+            _DEFAULT_TYPST_BACKEND = TypstCliRenderBackend()
+        return _DEFAULT_TYPST_BACKEND
+
+
+async def close_default_typst_backend() -> None:
+    """Close and clear the default Typst backend when it owns resources."""
+    global _DEFAULT_TYPST_BACKEND
+    with _DEFAULT_TYPST_BACKEND_LOCK:
+        backend = _DEFAULT_TYPST_BACKEND
+    close = getattr(backend, "close", None)
+    try:
+        if close is not None:
+            await close()
+    finally:
+        with _DEFAULT_TYPST_BACKEND_LOCK:
+            if _DEFAULT_TYPST_BACKEND is backend:
+                _DEFAULT_TYPST_BACKEND = None
+
+
 async def render_html_to_bytes(
     html: str,
     *,
@@ -115,6 +156,25 @@ async def render_svg_to_bytes(
     active_options.validate()
     active_backend = backend or get_default_svg_backend()
     return await active_backend.render_svg_to_bytes(svg, active_options)
+
+
+async def render_typst_to_bytes(
+    source: str,
+    *,
+    options: TypstRenderOptions | None = None,
+    backend: TypstRenderBackend | None = None,
+) -> bytes:
+    """Render Typst source into image bytes.
+
+    Args:
+        source: Typst source text.
+        options: Typst rendering options.
+        backend: Optional Typst backend override.
+    """
+    active_options = options or TypstRenderOptions()
+    active_options.validate()
+    active_backend = backend or get_default_typst_backend()
+    return await active_backend.render_typst_to_bytes(source, active_options)
 
 
 async def render_html_to_file(
@@ -221,6 +281,60 @@ async def render_svg_to_file(
     )
 
 
+async def render_typst_to_file(
+    source: str,
+    *,
+    output_dir: str | Path,
+    options: TypstRenderOptions | None = None,
+    backend: TypstRenderBackend | None = None,
+    cache: bool = True,
+    filename: str | None = None,
+) -> RenderResult:
+    """Render Typst source into an image file.
+
+    Args:
+        source: Typst source text.
+        output_dir: Directory where the image file is written.
+        options: Typst rendering options.
+        backend: Optional Typst backend override.
+        cache: Reuse an existing file when the request hash matches.
+        filename: Optional explicit filename. If omitted, a stable hash is used.
+    """
+    active_options = options or TypstRenderOptions()
+    active_options.validate()
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / _resolve_typst_filename(
+        source,
+        options=active_options,
+        filename=filename,
+    )
+    if cache and target_path.is_file():
+        width, height = _png_dimensions(target_path.read_bytes())
+        return RenderResult(
+            path=target_path,
+            mime_type=active_options.mime_type,
+            width=width,
+            height=height,
+            cached=True,
+        )
+
+    image_bytes = await render_typst_to_bytes(
+        source,
+        options=active_options,
+        backend=backend,
+    )
+    target_path.write_bytes(image_bytes)
+    width, height = _png_dimensions(image_bytes)
+    return RenderResult(
+        path=target_path,
+        mime_type=active_options.mime_type,
+        width=width,
+        height=height,
+        cached=False,
+    )
+
+
 async def render_template_to_bytes(
     template: str | Path,
     *,
@@ -245,6 +359,19 @@ async def render_svg_template_to_bytes(
     """Render a Jinja2 SVG template into image bytes."""
     svg = render_template_text(template, data=data, template_dirs=template_dirs)
     return await render_svg_to_bytes(svg, options=options, backend=backend)
+
+
+async def render_typst_template_to_bytes(
+    template: str | Path,
+    *,
+    data: Mapping[str, Any] | None = None,
+    template_dirs: Sequence[str | Path] | None = None,
+    options: TypstRenderOptions | None = None,
+    backend: TypstRenderBackend | None = None,
+) -> bytes:
+    """Render a Jinja2 Typst template into image bytes."""
+    source = render_template_text(template, data=data, template_dirs=template_dirs)
+    return await render_typst_to_bytes(source, options=options, backend=backend)
 
 
 async def render_template_to_file(
@@ -285,6 +412,29 @@ async def render_svg_template_to_file(
     svg = render_template_text(template, data=data, template_dirs=template_dirs)
     return await render_svg_to_file(
         svg,
+        output_dir=output_dir,
+        options=options,
+        backend=backend,
+        cache=cache,
+        filename=filename,
+    )
+
+
+async def render_typst_template_to_file(
+    template: str | Path,
+    *,
+    data: Mapping[str, Any] | None = None,
+    template_dirs: Sequence[str | Path] | None = None,
+    output_dir: str | Path,
+    options: TypstRenderOptions | None = None,
+    backend: TypstRenderBackend | None = None,
+    cache: bool = True,
+    filename: str | None = None,
+) -> RenderResult:
+    """Render a Jinja2 Typst template into an image file."""
+    source = render_template_text(template, data=data, template_dirs=template_dirs)
+    return await render_typst_to_file(
+        source,
         output_dir=output_dir,
         options=options,
         backend=backend,
@@ -340,3 +490,46 @@ def _resolve_svg_filename(
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     digest = hashlib.sha256(encoded).hexdigest()[:24]
     return f"render-svg-{digest}{options.suffix}"
+
+
+def _resolve_typst_filename(
+    source: str,
+    *,
+    options: TypstRenderOptions,
+    filename: str | None,
+) -> str:
+    if filename is not None:
+        return filename
+    payload = {
+        "source": source,
+        "options": {
+            "image_format": options.image_format,
+            "page": options.page,
+            "ppi": options.ppi,
+            "root": str(options.root) if options.root is not None else None,
+            "font_paths": [str(item) for item in options.font_paths],
+            "package_path": (
+                str(options.package_path) if options.package_path is not None else None
+            ),
+            "package_cache_path": (
+                str(options.package_cache_path)
+                if options.package_cache_path is not None
+                else None
+            ),
+            "ignore_system_fonts": options.ignore_system_fonts,
+            "inputs": options.inputs or {},
+            "jobs": options.jobs,
+        },
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()[:24]
+    return f"render-typst-{digest}{options.suffix}"
+
+
+def _png_dimensions(image_bytes: bytes) -> tuple[int, int]:
+    if len(image_bytes) < 24 or not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Image bytes are not a PNG document.")
+    return (
+        int.from_bytes(image_bytes[16:20], "big"),
+        int.from_bytes(image_bytes[20:24], "big"),
+    )
