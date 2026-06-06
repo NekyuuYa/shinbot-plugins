@@ -6,8 +6,9 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from typing import Any
+from xml.etree import ElementTree
 
-from .models import RenderOptions
+from .models import RenderOptions, SvgRenderOptions
 
 logger = logging.getLogger(__name__)
 
@@ -203,3 +204,60 @@ class PlaywrightRenderBackend:
                 "Install the plugin with the 'browser' extra or provide a custom backend."
             ) from exc
         return await async_playwright().start()
+
+
+class CairoSvgRenderBackend:
+    """Render SVG through CairoSVG in a worker thread."""
+
+    async def render_svg_to_bytes(self, svg: str, options: SvgRenderOptions) -> bytes:
+        """Render SVG markup to PNG bytes."""
+        options.validate()
+        prepared_svg = self._prepare_svg_markup(svg, options)
+        try:
+            from cairosvg import svg2png
+        except ImportError as exc:
+            raise RuntimeError(
+                "CairoSVG is required for RenderKit SVG rendering. "
+                "Install the plugin with the 'svg' extra or provide a custom SVG backend."
+            ) from exc
+
+        def render() -> bytes:
+            result = svg2png(
+                bytestring=prepared_svg.encode("utf-8"),
+                output_width=options.width,
+                output_height=options.height,
+                scale=options.scale,
+                background_color=options.background_color,
+                unsafe=options.unsafe,
+            )
+            if not isinstance(result, bytes):
+                raise RuntimeError("CairoSVG did not return image bytes.")
+            return result
+
+        return await asyncio.wait_for(
+            asyncio.to_thread(render),
+            timeout=options.timeout_ms / 1000,
+        )
+
+    def _prepare_svg_markup(self, svg: str, options: SvgRenderOptions) -> str:
+        stripped = svg.strip()
+        root = self._parse_xml_root(stripped)
+        if root is not None and self._is_svg_root(root):
+            return stripped
+        content = ElementTree.tostring(root, encoding="unicode") if root is not None else stripped
+        return (
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'width="{options.width}" height="{options.height}" '
+            f'viewBox="0 0 {options.width} {options.height}">'
+            f"{content}</svg>"
+        )
+
+    def _parse_xml_root(self, svg: str) -> ElementTree.Element[str] | None:
+        try:
+            return ElementTree.fromstring(svg)
+        except ElementTree.ParseError:
+            return None
+
+    def _is_svg_root(self, root: ElementTree.Element[str]) -> bool:
+        _, _, local_name = root.tag.rpartition("}")
+        return (local_name or root.tag).lower() == "svg"

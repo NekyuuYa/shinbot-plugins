@@ -1,7 +1,7 @@
 [project]
 name = "shinbot-plugin-renderkit"
-version = "0.1.0"
-description = "General-purpose HTML/CSS rendering utilities for ShinBot plugins."
+version = "0.2.0"
+description = "General-purpose HTML/CSS and SVG rendering utilities for ShinBot plugins."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -12,6 +12,9 @@ dependencies = [
 [project.optional-dependencies]
 browser = [
     "playwright>=1.45.0",
+]
+svg = [
+    "cairosvg>=2.7.0",
 ]
 
 [tool.ruff]

@@ -1,6 +1,6 @@
 [project]
 name = "shinbot-plugins"
-version = "0.1.0"
+version = "0.2.0"
 description = "Optional plugin monorepo for ShinBot."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -56,4 +56,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "playwright.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "cairosvg.*"
 ignore_missing_imports = true

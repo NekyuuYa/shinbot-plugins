@@ -1,4 +1,4 @@
-"""ShinBot plugin: general-purpose HTML/CSS image rendering."""
+"""ShinBot plugin: general-purpose HTML/CSS and SVG image rendering."""
 
 from __future__ import annotations
 
@@ -12,21 +12,27 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .api import (
     close_default_backend,
+    close_default_svg_backend,
     configure_default_backend,
+    configure_default_svg_backend,
     render_html_to_bytes,
     render_html_to_file,
+    render_svg_template_to_bytes,
+    render_svg_template_to_file,
+    render_svg_to_bytes,
+    render_svg_to_file,
     render_template_to_bytes,
     render_template_to_file,
 )
 from .backends import PlaywrightRenderBackend
-from .models import ImageFormat, RenderOptions, RenderResult
+from .models import ImageFormat, RenderOptions, RenderResult, SvgRenderOptions
 from .template import render_template_text
 
 if TYPE_CHECKING:
     from shinbot.core.plugins.context import Plugin
 
 __plugin_name__ = "RenderKit"
-__plugin_description__ = "General-purpose HTML/CSS template rendering for ShinBot plugins."
+__plugin_description__ = "General-purpose HTML/CSS and SVG template rendering for ShinBot plugins."
 
 
 class RenderKitPluginConfig(BaseModel):
@@ -70,6 +76,7 @@ def setup(plg: Plugin) -> None:
 async def on_disable(_plg: Plugin) -> None:
     """Close RenderKit browser resources when the plugin is disabled."""
     await close_default_backend()
+    await close_default_svg_backend()
 
 
 def _register_render_tool(
@@ -137,6 +144,60 @@ def _register_render_tool(
         )
         return result.to_dict()
 
+    @plg.tool(
+        name="render_svg_image",
+        display_name="Render SVG Image",
+        description="Render a standard SVG document or fragment to a PNG image file.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "svg": {"type": "string"},
+                "width": {"type": "integer", "minimum": 1, "maximum": 4096},
+                "height": {"type": "integer", "minimum": 1, "maximum": 4096},
+                "scale": {"type": "number", "exclusiveMinimum": 0, "maximum": 4},
+                "background_color": {"type": "string"},
+            },
+            "required": ["svg"],
+            "additionalProperties": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "mime_type": {"type": "string"},
+                "width": {"type": "integer"},
+                "height": {"type": "integer"},
+                "cached": {"type": "boolean"},
+            },
+            "required": ["path", "mime_type", "width", "height", "cached"],
+            "additionalProperties": False,
+        },
+        visibility=public_visibility,
+        timeout_seconds=120.0,
+        tags=["render", "svg", "image"],
+    )
+    async def render_svg_image(
+        svg: str,
+        width: int | None = None,
+        height: int | None = None,
+        scale: float = 1.0,
+        background_color: str | None = None,
+    ) -> dict[str, object]:
+        options = SvgRenderOptions(
+            width=width if width is not None else config.default_width,
+            height=height if height is not None else config.default_height,
+            scale=scale,
+            timeout_ms=config.default_timeout_ms,
+            background_color=background_color,
+        )
+        result = await render_svg_to_file(
+            svg,
+            output_dir=Path(plg.data_dir) / "renders",
+            options=options,
+            cache=config.cache_files,
+        )
+        return result.to_dict()
+
 
 def _image_format(value: str) -> ImageFormat:
     formats: dict[str, ImageFormat] = {"png": "png", "jpeg": "jpeg"}
@@ -180,10 +241,17 @@ __all__ = [
     "RenderKitPluginConfig",
     "RenderOptions",
     "RenderResult",
+    "SvgRenderOptions",
     "close_default_backend",
+    "close_default_svg_backend",
     "configure_default_backend",
+    "configure_default_svg_backend",
     "render_html_to_bytes",
     "render_html_to_file",
+    "render_svg_template_to_bytes",
+    "render_svg_template_to_file",
+    "render_svg_to_bytes",
+    "render_svg_to_file",
     "render_template_text",
     "render_template_to_bytes",
     "render_template_to_file",

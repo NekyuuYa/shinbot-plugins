@@ -46,6 +46,9 @@ def test_register_render_tool_declares_public_html_tool(tmp_path: Path) -> None:
     assert plugin.tools[0]["name"] == "render_html_image"
     assert "html" in plugin.tools[0]["tags"]
     assert plugin.tools[0]["input_schema"]["required"] == ["html"]
+    assert plugin.tools[1]["name"] == "render_svg_image"
+    assert "svg" in plugin.tools[1]["tags"]
+    assert plugin.tools[1]["input_schema"]["required"] == ["svg"]
 
 
 @pytest.mark.asyncio
@@ -70,6 +73,30 @@ async def test_render_tool_rejects_zero_dimensions(tmp_path: Path) -> None:
         await handler("<main>Hello</main>", width=0)
     with pytest.raises(ValueError, match="height"):
         await handler("<main>Hello</main>", height=0)
+
+
+@pytest.mark.asyncio
+async def test_svg_render_tool_rejects_zero_dimensions(tmp_path: Path) -> None:
+    plugin = _FakePlugin(tmp_path)
+
+    _register_render_tool(plugin, RenderKitPluginConfig(), public_visibility="public")
+    handler = plugin.tools[1]["handler"]
+
+    with pytest.raises(ValueError, match="width"):
+        await handler("<svg />", width=0)
+    with pytest.raises(ValueError, match="height"):
+        await handler("<svg />", height=0)
+
+
+@pytest.mark.asyncio
+async def test_svg_render_tool_rejects_zero_scale(tmp_path: Path) -> None:
+    plugin = _FakePlugin(tmp_path)
+
+    _register_render_tool(plugin, RenderKitPluginConfig(), public_visibility="public")
+    handler = plugin.tools[1]["handler"]
+
+    with pytest.raises(ValueError, match="scale"):
+        await handler("<svg />", scale=0)
 
 
 def test_load_plugin_config_reads_shinbot_config_block(

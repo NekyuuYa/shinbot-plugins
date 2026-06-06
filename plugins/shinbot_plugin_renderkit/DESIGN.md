@@ -9,10 +9,11 @@ visual replies.
 
 ## Input Format
 
-RenderKit uses existing web standards:
+RenderKit uses existing standards:
 
 - HTML for document structure.
 - CSS for layout and visual styling.
+- SVG for compact vector scenes and fast rasterization.
 - Jinja2 for optional server-side templates.
 
 It intentionally does not invent a scene schema. Business plugins own their data
@@ -24,14 +25,22 @@ mapping and templates.
 - `render_template_to_file(template, data, template_dirs, output_dir, ...)`
 - `render_html_to_bytes(html, ...)`
 - `render_template_to_bytes(template, data, template_dirs, ...)`
+- `render_svg_to_file(svg, output_dir, ...)`
+- `render_svg_template_to_file(template, data, template_dirs, output_dir, ...)`
+- `render_svg_to_bytes(svg, ...)`
+- `render_svg_template_to_bytes(template, data, template_dirs, ...)`
 
-All rendering APIs are async because the browser backend is async.
+All rendering APIs are async. HTML rendering uses an async browser backend. SVG
+rendering is run in a worker thread so callers can use the same async API shape.
 
 ## Backend
 
-The default backend is Playwright/Chromium. It is imported lazily so installing
-RenderKit without browser dependencies is still possible. Callers may inject a
-custom backend in tests or constrained deployments.
+The default HTML backend is Playwright/Chromium. It is imported lazily so
+installing RenderKit without browser dependencies is still possible.
+
+The default SVG backend is CairoSVG. It is also imported lazily and is available
+through the optional `svg` extra. Callers may inject custom backends in tests or
+constrained deployments.
 
 ## Caching
 
@@ -42,6 +51,8 @@ File rendering can cache by hashing the normalized render request:
 - output format
 - device scale factor
 - selector/full-page mode
+- SVG output size
+- SVG scale/background/safety options
 
 If an existing cached file is present, RenderKit returns it without starting the
 backend.
@@ -50,5 +61,6 @@ backend.
 
 The plugin exposes Python APIs for other plugins. During `setup(plg)`, it also
 tries to register a public `render_html_image` tool when ShinBot provides a
-`ToolRegistry`. The tool is optional and should not be the primary plugin-to-
-plugin integration path.
+`ToolRegistry`. It also registers `render_svg_image` for SVG-to-PNG rendering.
+The tools are optional and should not be the primary plugin-to-plugin
+integration path.

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import sys
+import types
 from typing import Any
 
 import pytest
 
-from shinbot_plugin_renderkit import RenderOptions
-from shinbot_plugin_renderkit.backends import PlaywrightRenderBackend
+from shinbot_plugin_renderkit import RenderOptions, SvgRenderOptions
+from shinbot_plugin_renderkit.backends import CairoSvgRenderBackend, PlaywrightRenderBackend
 
 
 class _FakePage:
@@ -292,3 +294,47 @@ async def test_playwright_backend_limits_concurrent_pages() -> None:
     await backend.close()
 
     assert tracker.max_active_pages == 1
+
+
+def test_cairosvg_backend_wraps_svg_fragments() -> None:
+    backend = CairoSvgRenderBackend()
+    options = SvgRenderOptions(width=320, height=180)
+
+    wrapped = backend._prepare_svg_markup("<rect width='10' height='10' />", options)
+    unchanged = backend._prepare_svg_markup("<svg viewBox='0 0 10 10'></svg>", options)
+    xml_declared = backend._prepare_svg_markup(
+        '<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 10 10"></svg>',
+        options,
+    )
+    long_prefixed = backend._prepare_svg_markup(
+        f"<!-- {'x' * 300} --><svg viewBox='0 0 10 10'></svg>",
+        options,
+    )
+    xml_fragment = backend._prepare_svg_markup(
+        '<?xml version="1.0"?><rect width="10" height="10" />',
+        options,
+    )
+
+    assert wrapped.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+    assert 'viewBox="0 0 320 180"' in wrapped
+    assert '<rect width="10" height="10" />' in wrapped
+    assert unchanged == "<svg viewBox='0 0 10 10'></svg>"
+    assert xml_declared == '<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 10 10"></svg>'
+    assert long_prefixed == f"<!-- {'x' * 300} --><svg viewBox='0 0 10 10'></svg>"
+    assert '<?xml version="1.0"?>' not in xml_fragment
+    assert '<rect width="10" height="10" />' in xml_fragment
+
+
+@pytest.mark.asyncio
+async def test_cairosvg_backend_rejects_non_bytes_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = types.ModuleType("cairosvg")
+
+    def svg2png(**_kwargs: Any) -> None:
+        return None
+
+    module.__dict__["svg2png"] = svg2png
+    monkeypatch.setitem(sys.modules, "cairosvg", module)
+
+    backend = CairoSvgRenderBackend()
+    with pytest.raises(RuntimeError, match="image bytes"):
+        await backend.render_svg_to_bytes("<svg />", SvgRenderOptions())

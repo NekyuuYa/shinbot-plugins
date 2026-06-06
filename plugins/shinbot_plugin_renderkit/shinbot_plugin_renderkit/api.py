@@ -9,12 +9,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .backends import PlaywrightRenderBackend
-from .models import RenderBackend, RenderOptions, RenderResult
+from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend
+from .models import RenderBackend, RenderOptions, RenderResult, SvgRenderBackend, SvgRenderOptions
 from .template import render_template_text
 
 _DEFAULT_BACKEND: RenderBackend | None = None
 _DEFAULT_BACKEND_LOCK = threading.RLock()
+_DEFAULT_SVG_BACKEND: SvgRenderBackend | None = None
+_DEFAULT_SVG_BACKEND_LOCK = threading.RLock()
 
 
 def configure_default_backend(backend: RenderBackend | None) -> None:
@@ -46,6 +48,37 @@ async def close_default_backend() -> None:
             _DEFAULT_BACKEND = None
 
 
+def configure_default_svg_backend(backend: SvgRenderBackend | None) -> None:
+    """Set the process-local default SVG backend used when callers do not pass one."""
+    global _DEFAULT_SVG_BACKEND
+    with _DEFAULT_SVG_BACKEND_LOCK:
+        _DEFAULT_SVG_BACKEND = backend
+
+
+def get_default_svg_backend() -> SvgRenderBackend:
+    """Return the lazily-created default SVG render backend."""
+    global _DEFAULT_SVG_BACKEND
+    with _DEFAULT_SVG_BACKEND_LOCK:
+        if _DEFAULT_SVG_BACKEND is None:
+            _DEFAULT_SVG_BACKEND = CairoSvgRenderBackend()
+        return _DEFAULT_SVG_BACKEND
+
+
+async def close_default_svg_backend() -> None:
+    """Close and clear the default SVG backend when it owns resources."""
+    global _DEFAULT_SVG_BACKEND
+    with _DEFAULT_SVG_BACKEND_LOCK:
+        backend = _DEFAULT_SVG_BACKEND
+    close = getattr(backend, "close", None)
+    try:
+        if close is not None:
+            await close()
+    finally:
+        with _DEFAULT_SVG_BACKEND_LOCK:
+            if _DEFAULT_SVG_BACKEND is backend:
+                _DEFAULT_SVG_BACKEND = None
+
+
 async def render_html_to_bytes(
     html: str,
     *,
@@ -63,6 +96,25 @@ async def render_html_to_bytes(
     active_options.validate()
     active_backend = backend or get_default_backend()
     return await active_backend.render_html_to_bytes(html, active_options)
+
+
+async def render_svg_to_bytes(
+    svg: str,
+    *,
+    options: SvgRenderOptions | None = None,
+    backend: SvgRenderBackend | None = None,
+) -> bytes:
+    """Render SVG markup into image bytes.
+
+    Args:
+        svg: SVG document or fragment markup.
+        options: SVG rendering options.
+        backend: Optional SVG backend override.
+    """
+    active_options = options or SvgRenderOptions()
+    active_options.validate()
+    active_backend = backend or get_default_svg_backend()
+    return await active_backend.render_svg_to_bytes(svg, active_options)
 
 
 async def render_html_to_file(
@@ -117,6 +169,58 @@ async def render_html_to_file(
     )
 
 
+async def render_svg_to_file(
+    svg: str,
+    *,
+    output_dir: str | Path,
+    options: SvgRenderOptions | None = None,
+    backend: SvgRenderBackend | None = None,
+    cache: bool = True,
+    filename: str | None = None,
+) -> RenderResult:
+    """Render SVG markup into an image file.
+
+    Args:
+        svg: SVG document or fragment markup.
+        output_dir: Directory where the image file is written.
+        options: SVG rendering options.
+        backend: Optional SVG backend override.
+        cache: Reuse an existing file when the request hash matches.
+        filename: Optional explicit filename. If omitted, a stable hash is used.
+    """
+    active_options = options or SvgRenderOptions()
+    active_options.validate()
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / _resolve_svg_filename(
+        svg,
+        options=active_options,
+        filename=filename,
+    )
+    if cache and target_path.is_file():
+        return RenderResult(
+            path=target_path,
+            mime_type=active_options.mime_type,
+            width=active_options.width,
+            height=active_options.height,
+            cached=True,
+        )
+
+    image_bytes = await render_svg_to_bytes(
+        svg,
+        options=active_options,
+        backend=backend,
+    )
+    target_path.write_bytes(image_bytes)
+    return RenderResult(
+        path=target_path,
+        mime_type=active_options.mime_type,
+        width=active_options.width,
+        height=active_options.height,
+        cached=False,
+    )
+
+
 async def render_template_to_bytes(
     template: str | Path,
     *,
@@ -128,6 +232,19 @@ async def render_template_to_bytes(
     """Render a Jinja2 HTML template into image bytes."""
     html = render_template_text(template, data=data, template_dirs=template_dirs)
     return await render_html_to_bytes(html, options=options, backend=backend)
+
+
+async def render_svg_template_to_bytes(
+    template: str | Path,
+    *,
+    data: Mapping[str, Any] | None = None,
+    template_dirs: Sequence[str | Path] | None = None,
+    options: SvgRenderOptions | None = None,
+    backend: SvgRenderBackend | None = None,
+) -> bytes:
+    """Render a Jinja2 SVG template into image bytes."""
+    svg = render_template_text(template, data=data, template_dirs=template_dirs)
+    return await render_svg_to_bytes(svg, options=options, backend=backend)
 
 
 async def render_template_to_file(
@@ -145,6 +262,29 @@ async def render_template_to_file(
     html = render_template_text(template, data=data, template_dirs=template_dirs)
     return await render_html_to_file(
         html,
+        output_dir=output_dir,
+        options=options,
+        backend=backend,
+        cache=cache,
+        filename=filename,
+    )
+
+
+async def render_svg_template_to_file(
+    template: str | Path,
+    *,
+    data: Mapping[str, Any] | None = None,
+    template_dirs: Sequence[str | Path] | None = None,
+    output_dir: str | Path,
+    options: SvgRenderOptions | None = None,
+    backend: SvgRenderBackend | None = None,
+    cache: bool = True,
+    filename: str | None = None,
+) -> RenderResult:
+    """Render a Jinja2 SVG template into an image file."""
+    svg = render_template_text(template, data=data, template_dirs=template_dirs)
+    return await render_svg_to_file(
+        svg,
         output_dir=output_dir,
         options=options,
         backend=backend,
@@ -176,3 +316,27 @@ def _resolve_filename(
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
     digest = hashlib.sha256(encoded).hexdigest()[:24]
     return f"render-{digest}{options.suffix}"
+
+
+def _resolve_svg_filename(
+    svg: str,
+    *,
+    options: SvgRenderOptions,
+    filename: str | None,
+) -> str:
+    if filename is not None:
+        return filename
+    payload = {
+        "svg": svg,
+        "options": {
+            "width": options.width,
+            "height": options.height,
+            "image_format": options.image_format,
+            "scale": options.scale,
+            "background_color": options.background_color,
+            "unsafe": options.unsafe,
+        },
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()[:24]
+    return f"render-svg-{digest}{options.suffix}"

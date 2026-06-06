@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 ImageFormat = Literal["png", "jpeg"]
+SvgImageFormat = Literal["png"]
 
 
 class RenderBackend(Protocol):
@@ -18,6 +19,20 @@ class RenderBackend(Protocol):
 
 class ClosableRenderBackend(RenderBackend, Protocol):
     """Render backend that owns resources and can be closed."""
+
+    async def close(self) -> None:
+        """Release backend resources."""
+
+
+class SvgRenderBackend(Protocol):
+    """Backend capable of turning SVG into image bytes."""
+
+    async def render_svg_to_bytes(self, svg: str, options: SvgRenderOptions) -> bytes:
+        """Render SVG to image bytes."""
+
+
+class ClosableSvgRenderBackend(SvgRenderBackend, Protocol):
+    """SVG render backend that owns resources and can be closed."""
 
     async def close(self) -> None:
         """Release backend resources."""
@@ -60,6 +75,44 @@ class RenderOptions:
     def mime_type(self) -> str:
         """Return the MIME type for this render format."""
         return "image/jpeg" if self.image_format == "jpeg" else "image/png"
+
+
+@dataclass(frozen=True, slots=True)
+class SvgRenderOptions:
+    """Options for SVG raster rendering."""
+
+    width: int = 800
+    height: int = 480
+    image_format: SvgImageFormat = "png"
+    scale: float = 1.0
+    timeout_ms: int = 30_000
+    background_color: str | None = None
+    unsafe: bool = False
+
+    def validate(self) -> None:
+        """Validate SVG render options before a backend is invoked."""
+        if self.width <= 0:
+            raise ValueError("SVG render width must be positive.")
+        if self.height <= 0:
+            raise ValueError("SVG render height must be positive.")
+        if self.scale <= 0:
+            raise ValueError("SVG render scale must be positive.")
+        if self.scale > 4:
+            raise ValueError("SVG render scale must be no greater than 4.")
+        if self.timeout_ms <= 0:
+            raise ValueError("Timeout must be positive.")
+        if self.image_format != "png":
+            raise ValueError(f"Unsupported SVG image format: {self.image_format}.")
+
+    @property
+    def suffix(self) -> str:
+        """Return the file suffix for this render format."""
+        return ".png"
+
+    @property
+    def mime_type(self) -> str:
+        """Return the MIME type for this render format."""
+        return "image/png"
 
 
 @dataclass(frozen=True, slots=True)
