@@ -35,6 +35,7 @@ def test_json_store_round_trips_with_safe_key(tmp_path: Path) -> None:
         session_id="a:b",
         spec=BoardSpec(width=5, height=5, mines=3),
     )
+    game.theme = "dark"
     store: JsonGameStore[GameState] = JsonGameStore(
         tmp_path,
         serialize=lambda item: item.to_dict(),
@@ -45,4 +46,6 @@ def test_json_store_round_trips_with_safe_key(tmp_path: Path) -> None:
     store.save(game)
 
     assert (tmp_path / f"{safe_session_key('a:b')}.json").is_file()
-    assert store.load("a:b") is not None
+    loaded = store.load("a:b")
+    assert loaded is not None
+    assert loaded.theme == "dark"

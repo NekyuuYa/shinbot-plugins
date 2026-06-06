@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import sys
 import time
 import tomllib
@@ -21,13 +20,16 @@ from .engine import (
 from .models import GameState, Position
 from .parser import (
     DIFFICULTIES,
+    THEME_NAMES,
     CustomLimits,
     GameSize,
     ParseError,
     RootCommand,
+    ThemeName,
     cell_label,
     parse_root_command,
     parse_shortcut_message,
+    shortcut_pattern,
 )
 from .renderer import (
     RenderContext,
@@ -48,7 +50,6 @@ if TYPE_CHECKING:
 __plugin_name__ = "Minesweeper"
 __plugin_description__ = "Session-scoped chat minesweeper game."
 
-_SHORTCUT_PATTERN = re.compile(r"^\s*,\s*(op|flg|ch)\b", re.IGNORECASE)
 _STORE: GameStore[GameState] | None = None
 _ENGINE = MinesweeperEngine()
 
@@ -69,7 +70,8 @@ class MinesweeperPluginConfig(BaseModel):
     show_coordinates: bool = True
     ascii_symbols: bool = False
     render_mode: Literal["text", "auto", "image"] = "auto"
-    theme: Literal["light", "dark", "classic"] = "light"
+    theme: ThemeName = "light"
+    shortcut_prefix: str = Field(default=",", min_length=1, max_length=8)
     image_scale: float = Field(default=1.0, gt=0, le=4)
     recall_old_boards: bool = True
     keep_recent_board_messages: int = Field(default=2, ge=1, le=5)
@@ -80,19 +82,24 @@ __plugin_config_class__ = MinesweeperPluginConfig
 
 
 def setup(plg: Plugin) -> None:
-    """Register minesweeper commands and comma shortcut route."""
+    """Register minesweeper commands and shortcut route."""
     from shinbot.core.dispatch.ingress import RouteDispatchContext
     from shinbot.core.dispatch.routing import RouteCondition, RouteMatchMode, RouteRule
 
     config = _load_plugin_config(plg.plugin_id)
     store = _build_store(plg, config)
     render_dir = Path(plg.data_dir) / "renders"
+    shortcut_prefix = _normalize_shortcut_prefix(config.shortcut_prefix)
+    shortcut_matcher = _build_shortcut_matcher(shortcut_prefix)
 
     @plg.on_command(
         "minesweeper",
         aliases=["ms"],
         description="在当前会话开始或操作扫雷游戏",
-        usage="/minesweeper start easy | /ms open a1 | ,op a1 | ,flg b2",
+        usage=(
+            f"/minesweeper start easy | /ms open a1 | "
+            f"{shortcut_prefix}op a1 | {shortcut_prefix}flg b2"
+        ),
         permission="cmd.minesweeper",
     )
     async def minesweeper_command(ctx: Any, args: str) -> None:
@@ -108,7 +115,7 @@ def setup(plg: Plugin) -> None:
     @plg.on_route(
         RouteCondition(
             event_types=frozenset({"message-created"}),
-            custom_matcher=_matches_shortcut,
+            custom_matcher=shortcut_matcher,
         ),
         rule_id="shinbot_plugin_minesweeper.shortcut",
         priority=80,
@@ -136,9 +143,14 @@ def on_disable(_plg: Plugin) -> None:
     _STORE = None
 
 
-def _matches_shortcut(_event: Any, message: Any) -> bool:
-    text = message.get_text().strip()
-    return bool(_SHORTCUT_PATTERN.match(text))
+def _build_shortcut_matcher(shortcut_prefix: str) -> Any:
+    pattern = shortcut_pattern(shortcut_prefix)
+
+    def matches_shortcut(_event: Any, message: Any) -> bool:
+        text = message.get_text().strip()
+        return bool(pattern.match(text))
+
+    return matches_shortcut
 
 
 async def _handle_root_command(
@@ -191,6 +203,17 @@ async def _handle_root_command(
             render_dir=render_dir,
         )
         return
+    if command.action == "theme":
+        await _handle_theme(
+            ctx,
+            command,
+            game,
+            store=store,
+            config=config,
+            logger=logger,
+            render_dir=render_dir,
+        )
+        return
     if command.action == "quit":
         await _quit_game(
             ctx,
@@ -229,6 +252,7 @@ async def _handle_shortcut(
     try:
         command = parse_shortcut_message(
             ctx.text,
+            shortcut_prefix=_normalize_shortcut_prefix(config.shortcut_prefix),
             board_width=game.board.width,
             board_height=game.board.height,
         )
@@ -269,6 +293,8 @@ async def _start_game(
     except ParseError as exc:
         await ctx.send(render_error(str(exc)))
         return
+    if existing is not None and existing.theme:
+        game.theme = existing.theme
     store.save(game)
     await _send_board(
         ctx,
@@ -303,6 +329,7 @@ async def _restart_game(
         return
     if game is not None:
         new_game.board_message_ids = list(game.board_message_ids)
+        new_game.theme = game.theme or config.theme
     store.save(new_game)
     await _send_board(
         ctx,
@@ -334,6 +361,40 @@ async def _send_status(
         logger=logger,
         render_dir=render_dir,
         track_board=False,
+    )
+
+
+async def _handle_theme(
+    ctx: Any,
+    command: RootCommand,
+    game: GameState | None,
+    *,
+    store: GameStore[GameState],
+    config: MinesweeperPluginConfig,
+    logger: Any,
+    render_dir: Path | None = None,
+) -> None:
+    if command.theme is None:
+        await ctx.send(_render_theme_status(game, config=config))
+        return
+
+    if game is None:
+        await ctx.send(
+            "当前会话没有扫雷记录。使用 /ms start easy 开始后再切换主题。"
+        )
+        return
+
+    game.theme = command.theme
+    game.updated_at = time.time()
+    store.save(game)
+    await ctx.send(f"已切换扫雷主题：{command.theme}")
+    await _send_board(
+        ctx,
+        game,
+        store=store,
+        config=config,
+        logger=logger,
+        render_dir=render_dir,
     )
 
 
@@ -542,6 +603,7 @@ def _render_game_board(game: GameState, *, config: MinesweeperPluginConfig) -> s
     options = RenderOptions(
         ascii=config.ascii_symbols,
         show_coordinates=config.show_coordinates,
+        shortcut_prefix=_normalize_shortcut_prefix(config.shortcut_prefix),
         reveal_mines_on_loss=config.reveal_mines_on_loss,
     )
     return render_board(game.board, context=context, options=options)
@@ -570,7 +632,7 @@ def _render_game_board_svg(
         game.board,
         context=context,
         options=options,
-        theme=theme or get_theme(config.theme),
+        theme=theme or get_theme(game.theme or config.theme),
     )
 
 
@@ -618,11 +680,23 @@ def _parse_root(
 
 def _create_game(ctx: Any, size: GameSize, *, config: MinesweeperPluginConfig) -> GameState:
     spec = _spec_from_size(size, config=config)
-    return _ENGINE.create_game(
+    game = _ENGINE.create_game(
         session_id=ctx.session_id,
         spec=spec,
         owner_user_id=ctx.user_id or None,
     )
+    game.theme = config.theme
+    return game
+
+
+def _render_theme_status(
+    game: GameState | None,
+    *,
+    config: MinesweeperPluginConfig,
+) -> str:
+    current = game.theme if game is not None and game.theme else config.theme
+    choices = "、".join(THEME_NAMES)
+    return f"当前扫雷主题：{current}。可选主题：{choices}。用法：/ms theme dark"
 
 
 def _spec_from_size(size: GameSize, *, config: MinesweeperPluginConfig) -> BoardSpec:
@@ -680,6 +754,13 @@ def _limits(config: MinesweeperPluginConfig) -> CustomLimits:
         max_height=config.max_height,
         max_mines=config.max_mines,
     )
+
+
+def _normalize_shortcut_prefix(value: str) -> str:
+    prefix = value.strip()
+    if not prefix or any(character.isspace() for character in prefix):
+        return ","
+    return prefix
 
 
 def _validate_size_limits(

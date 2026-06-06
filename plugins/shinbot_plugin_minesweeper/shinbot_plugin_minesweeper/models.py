@@ -194,6 +194,7 @@ class GameState:
     owner_user_id: str | None = None
     board_message_ids: list[str] = field(default_factory=list)
     last_action: str = ""
+    theme: str | None = None
 
     def is_active(self) -> bool:
         """Return whether the game still accepts operations."""
@@ -211,6 +212,7 @@ class GameState:
         self.owner_user_id = snapshot.owner_user_id
         self.board_message_ids = list(snapshot.board_message_ids)
         self.last_action = snapshot.last_action
+        self.theme = snapshot.theme
 
     def to_dict(self) -> dict[str, object]:
         """Serialize the game into JSON-compatible data."""
@@ -225,6 +227,7 @@ class GameState:
             "owner_user_id": self.owner_user_id,
             "board_message_ids": list(self.board_message_ids),
             "last_action": self.last_action,
+            "theme": self.theme,
         }
 
     @classmethod
@@ -254,6 +257,7 @@ class GameState:
             ),
             board_message_ids=[str(value) for value in raw_ids],
             last_action=str(data.get("last_action", "")),
+            theme=(str(data["theme"]) if data.get("theme") is not None else None),
         )
 
 

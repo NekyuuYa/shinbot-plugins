@@ -26,13 +26,14 @@ message deletion.
 
 ## Themes
 
-Image boards support multiple color themes (`light`, `dark`, `classic`),
-selected by the `theme` config field. A theme is a pure-data `Theme` object in
-`renderer.py` describing chrome colors (background, title, meta, coordinates)
-and per-state cell colors (hidden, flagged, exploded, mine, empty, revealed) plus
-a 1-8 number palette. `render_board_svg` injects these into the SVG template, so
-adding a theme is data-only. Themes affect image rendering only; the plain-text
-board is unchanged.
+Image boards support multiple color themes (`light`, `dark`, `classic`). The
+`theme` config field selects the default, while `/ms theme <name>` stores a
+session-level override on the current `GameState`. A theme is a pure-data
+`Theme` object in `renderer.py` describing chrome colors (background, title,
+meta, coordinates) and per-state cell colors (hidden, flagged, exploded, mine,
+empty, revealed) plus a 1-8 number palette. `render_board_svg` injects these into
+the SVG template, so adding a theme is data-only. Themes affect image rendering
+only; the plain-text board is unchanged.
 
 Hidden cells in image mode display their coordinate label (e.g. `a1`, `b3`)
 instead of the hidden symbol, making it easy to identify cells to operate on.
@@ -43,7 +44,14 @@ This is controlled by the `show_cell_coords` flag passed to `_render_cell`.
 The root command is `/minesweeper`, with `/ms` as the short alias. There is no
 `/mine` alias. Bare `/ms` returns help.
 
-Common cell operations can use comma shortcuts:
+`/ms theme` reports the active image theme, and `/ms theme light|dark|classic`
+switches the current session's image theme and re-sends the board.
+
+Common cell operations can use prefix shortcuts. The default prefix is `,`, and
+the `shortcut_prefix` config field can switch it to another non-whitespace
+string such as `.`. The route matcher captures the configured prefix at plugin
+setup time, so runtime changes require whatever plugin/config reload mechanism
+ShinBot provides.
 
 - `,op a1 b1` opens one or more cells.
 - `,flg c3 d4` toggles flags on one or more cells.

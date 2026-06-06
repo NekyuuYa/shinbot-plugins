@@ -15,6 +15,7 @@ from shinbot_plugin_minesweeper import (
     _handle_shortcut,
 )
 from shinbot_plugin_minesweeper.models import GameState
+from shinbot_plugin_minesweeper.renderer import DARK_THEME
 from shinbot_plugin_minesweeper.store import GameStore, MemoryGameStore
 
 
@@ -151,6 +152,26 @@ async def test_start_and_shortcut_batch_updates_board() -> None:
 
 
 @pytest.mark.asyncio
+async def test_configured_shortcut_prefix_updates_board() -> None:
+    ctx = _Ctx()
+    store = _store()
+    config = MinesweeperPluginConfig(
+        persist_games=False,
+        recall_old_boards=False,
+        shortcut_prefix=".",
+    )
+
+    await _handle_root_command(ctx, "start easy", store=store, config=config, logger=_Logger())
+    ctx.text = ",op a1"
+    await _handle_shortcut(ctx, store=store, config=config, logger=_Logger())
+    ctx.text = ".op a1"
+    await _handle_shortcut(ctx, store=store, config=config, logger=_Logger())
+
+    assert "本次：打开 a1" in ctx.sent[-1]
+    assert "操作：.op a1，.flg b2，.ch c3" in ctx.sent[-1]
+
+
+@pytest.mark.asyncio
 async def test_image_render_mode_sends_renderkit_image(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -181,6 +202,61 @@ async def test_image_render_mode_sends_renderkit_image(
     assert calls[0]["data"]["title"].startswith("扫雷 easy")
     assert calls[0]["output_dir"] == tmp_path
     assert calls[0]["template_dirs"][0].name == "templates"
+
+
+@pytest.mark.asyncio
+async def test_theme_command_updates_game_theme_and_rerenders_image(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _install_fake_image_modules(monkeypatch)
+    ctx = _Ctx()
+    store = _store()
+    config = MinesweeperPluginConfig(
+        persist_games=False,
+        recall_old_boards=False,
+        render_mode="auto",
+        theme="light",
+    )
+
+    await _handle_root_command(
+        ctx,
+        "start easy",
+        store=store,
+        config=config,
+        logger=_Logger(),
+        render_dir=tmp_path,
+    )
+    await _handle_root_command(
+        ctx,
+        "theme dark",
+        store=store,
+        config=config,
+        logger=_Logger(),
+        render_dir=tmp_path,
+    )
+
+    game = store.load(ctx.session_id)
+    assert game is not None
+    assert game.theme == "dark"
+    assert "已切换扫雷主题：dark" in ctx.sent[-2]
+    assert calls[-1]["data"]["background"] == DARK_THEME.background
+
+
+@pytest.mark.asyncio
+async def test_theme_status_reports_current_theme() -> None:
+    ctx = _Ctx()
+
+    await _handle_root_command(
+        ctx,
+        "theme",
+        store=_store(),
+        config=MinesweeperPluginConfig(persist_games=False, theme="classic"),
+        logger=_Logger(),
+    )
+
+    assert "当前扫雷主题：classic" in ctx.sent[-1]
+    assert "light、dark、classic" in ctx.sent[-1]
 
 
 @pytest.mark.asyncio

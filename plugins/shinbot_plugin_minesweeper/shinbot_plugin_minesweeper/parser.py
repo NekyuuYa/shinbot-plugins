@@ -7,7 +7,18 @@ from dataclasses import dataclass
 from typing import Literal
 
 DifficultyName = Literal["easy", "normal", "hard"]
-RootAction = Literal["help", "start", "restart", "open", "flag", "chord", "status", "quit"]
+ThemeName = Literal["light", "dark", "classic"]
+RootAction = Literal[
+    "help",
+    "start",
+    "restart",
+    "open",
+    "flag",
+    "chord",
+    "status",
+    "theme",
+    "quit",
+]
 ShortcutAction = Literal["open", "flag", "chord"]
 GameSizeKind = Literal["default", "current", "difficulty", "custom"]
 
@@ -16,6 +27,7 @@ DIFFICULTIES: dict[DifficultyName, tuple[int, int, int]] = {
     "normal": (16, 16, 40),
     "hard": (30, 16, 99),
 }
+THEME_NAMES: tuple[ThemeName, ...] = ("light", "dark", "classic")
 
 DEFAULT_MIN_WIDTH = 5
 DEFAULT_MIN_HEIGHT = 5
@@ -26,8 +38,6 @@ DEFAULT_MAX_MINES = 200
 
 _CELL_PATTERN = re.compile(r"^([A-Za-z]+)([1-9][0-9]*)$")
 _SIZE_PATTERN = re.compile(r"^([1-9][0-9]*)x([1-9][0-9]*)$", re.IGNORECASE)
-_SHORTCUT_PATTERN = re.compile(r"^\s*,\s*(op|flg|ch)\b(.*)$", re.IGNORECASE)
-
 _ACTION_ALIASES: dict[str, RootAction] = {
     "help": "help",
     "h": "help",
@@ -42,6 +52,10 @@ _ACTION_ALIASES: dict[str, RootAction] = {
     "status": "status",
     "board": "status",
     "b": "status",
+    "theme": "theme",
+    "themes": "theme",
+    "t": "theme",
+    "主题": "theme",
     "restart": "restart",
     "r": "restart",
     "quit": "quit",
@@ -98,11 +112,12 @@ class RootCommand:
     action: RootAction
     cells: tuple[CellCoord, ...] = ()
     size: GameSize | None = None
+    theme: ThemeName | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ShortcutCommand:
-    """Parsed comma shortcut command such as `,op a1 b1`."""
+    """Parsed shortcut command such as `,op a1 b1`."""
 
     action: ShortcutAction
     cells: tuple[CellCoord, ...]
@@ -203,6 +218,10 @@ def parse_root_command(
             raise ParseError(f"{tokens[0]} 不需要额外参数。")
         return RootCommand(action=action)
 
+    if action == "theme":
+        theme = parse_theme_name(rest)
+        return RootCommand(action=action, theme=theme)
+
     if action == "start":
         size = parse_game_size(
             rest,
@@ -231,6 +250,20 @@ def parse_root_command(
 
     cells = parse_cells(rest, width=board_width, height=board_height)
     return RootCommand(action=action, cells=cells)
+
+
+def parse_theme_name(tokens: list[str] | tuple[str, ...]) -> ThemeName | None:
+    """Parse an optional theme name for `/ms theme`."""
+
+    if not tokens:
+        return None
+    if len(tokens) != 1:
+        raise ParseError("用法：/ms theme light|dark|classic")
+    candidate = tokens[0].lower()
+    if candidate not in THEME_NAMES:
+        choices = "、".join(THEME_NAMES)
+        raise ParseError(f"未知主题：{tokens[0]}。可选：{choices}。")
+    return candidate
 
 
 def parse_game_size(
@@ -303,13 +336,15 @@ def parse_game_size(
 def parse_shortcut_message(
     text: str,
     *,
+    shortcut_prefix: str = ",",
     board_width: int | None = None,
     board_height: int | None = None,
 ) -> ShortcutCommand | None:
-    """Parse a comma shortcut message.
+    """Parse a shortcut message.
 
     Args:
         text: Full message text.
+        shortcut_prefix: Prefix expected before `op`, `flg`, or `ch`.
         board_width: Optional active board width for range checks.
         board_height: Optional active board height for range checks.
 
@@ -320,7 +355,7 @@ def parse_shortcut_message(
         ParseError: If the shortcut is supported but its cell list is invalid.
     """
 
-    match = _SHORTCUT_PATTERN.match(text)
+    match = shortcut_pattern(shortcut_prefix).match(text)
     if match is None:
         return None
 
@@ -328,11 +363,24 @@ def parse_shortcut_message(
     action = _SHORTCUT_ACTIONS[verb.lower()]
     tokens = rest.split()
     if not tokens:
-        example = {"open": ",op a1", "flag": ",flg a1", "chord": ",ch a1"}[action]
+        example = {
+            "open": f"{shortcut_prefix}op a1",
+            "flag": f"{shortcut_prefix}flg a1",
+            "chord": f"{shortcut_prefix}ch a1",
+        }[action]
         raise ParseError(f"用法：{example}")
 
     cells = parse_cells(tokens, width=board_width, height=board_height)
     return ShortcutCommand(action=action, cells=cells)
+
+
+def shortcut_pattern(shortcut_prefix: str = ",") -> re.Pattern[str]:
+    """Build a regex that matches configured shortcut messages."""
+
+    return re.compile(
+        rf"^\s*{re.escape(shortcut_prefix)}\s*(op|flg|ch)\b(.*)$",
+        re.IGNORECASE,
+    )
 
 
 def cell_label(x: int, y: int) -> str:

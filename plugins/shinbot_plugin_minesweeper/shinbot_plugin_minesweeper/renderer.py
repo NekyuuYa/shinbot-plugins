@@ -198,6 +198,7 @@ class RenderOptions:
     ascii: bool = False
     show_coordinates: bool = True
     include_hints: bool = True
+    shortcut_prefix: str = ","
     reveal_mines_on_loss: bool = True
 
 
@@ -269,7 +270,8 @@ def render_board(
     )
 
     if active_options.include_hints:
-        lines.append("操作：,op a1，,flg b2，,ch c3")
+        prefix = active_options.shortcut_prefix
+        lines.append(f"操作：{prefix}op a1，{prefix}flg b2，{prefix}ch c3")
         lines.append("其他：/ms status，/ms restart，/ms quit")
 
     return "\n".join(lines)
@@ -395,6 +397,7 @@ def render_help() -> str:
             ",op a1 b1：打开格子",
             ",flg c3：插旗/取消插旗",
             ",ch d4：连开数字格",
+            "/ms theme light|dark|classic：切换图片主题",
             "/ms status 查看，/ms restart 重开，/ms quit 结束",
         ]
     )

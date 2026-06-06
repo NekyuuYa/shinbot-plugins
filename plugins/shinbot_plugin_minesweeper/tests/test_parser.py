@@ -52,6 +52,24 @@ def test_parse_restart_empty_reuses_current() -> None:
     assert parse_root_command("restart").size == GameSize(kind="current")
 
 
+def test_parse_theme_command() -> None:
+    assert parse_root_command("theme") == RootCommand(action="theme")
+    assert parse_root_command("theme dark") == RootCommand(
+        action="theme",
+        theme="dark",
+    )
+    assert parse_root_command("主题 classic") == RootCommand(
+        action="theme",
+        theme="classic",
+    )
+
+    with pytest.raises(ParseError, match="未知主题"):
+        parse_root_command("theme neon")
+
+    with pytest.raises(ParseError, match="用法：/ms theme"):
+        parse_root_command("theme dark light")
+
+
 @pytest.mark.parametrize(
     ("args", "expected"),
     [
@@ -101,6 +119,17 @@ def test_parse_comma_shortcuts_with_multi_cells() -> None:
             parse_cell("aa12", width=27, height=12),
         ),
     )
+
+
+def test_parse_configured_shortcut_prefix() -> None:
+    assert parse_shortcut_message(",op a1", shortcut_prefix=".") is None
+
+    command = parse_shortcut_message(".OP a1", shortcut_prefix=".")
+
+    assert command == ShortcutCommand(action="open", cells=(parse_cell("a1"),))
+
+    with pytest.raises(ParseError, match=r"用法：\.flg a1"):
+        parse_shortcut_message(".flg", shortcut_prefix=".")
 
 
 def test_parse_shortcut_missing_cells_reports_usage() -> None:

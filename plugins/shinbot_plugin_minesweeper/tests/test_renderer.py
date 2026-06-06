@@ -157,6 +157,14 @@ def test_render_help_mentions_empty_ms_usage() -> None:
     assert ",op a1 b1" in rendered
 
 
+def test_render_board_uses_configured_shortcut_prefix_in_hints() -> None:
+    board = FakeBoard(width=1, height=1, mine_count=0, cells=[FakeCell()])
+
+    rendered = render_board(board, options=RenderOptions(shortcut_prefix="."))
+
+    assert "操作：.op a1，.flg b2，.ch c3" in rendered
+
+
 def test_theme_registry_and_fallback() -> None:
     assert set(THEMES) == {"light", "dark", "classic"}
     assert get_theme(None) is LIGHT_THEME
