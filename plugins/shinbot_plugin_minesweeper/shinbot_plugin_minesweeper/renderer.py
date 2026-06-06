@@ -294,6 +294,8 @@ def render_board_svg(
 
     cell_size = 34
     gap = 2
+    cell_radius = 0 if active_theme.name == "classic" else 2
+    cell_stroke_width = 0.75
     left = 54 if active_options.show_coordinates else 18
     top = 116 if active_options.show_coordinates else 86
     grid_width = board.width * cell_size + max(0, board.width - 1) * gap
@@ -358,6 +360,8 @@ def render_board_svg(
                     "text_x": rect_x + cell_size / 2,
                     "text_y": rect_y + cell_size / 2,
                     "size": cell_size,
+                    "radius": cell_radius,
+                    "stroke_width": cell_stroke_width,
                     "text": text,
                     "fill": fill,
                     "stroke": stroke,

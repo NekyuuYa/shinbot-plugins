@@ -220,6 +220,8 @@ def test_render_svg_defaults_to_light_theme() -> None:
     assert svg.data["background"] == LIGHT_THEME.background
     cells = cast(list[dict[str, object]], svg.data["cells"])
     assert cells[0]["fill"] == LIGHT_THEME.hidden.fill
+    assert cells[0]["radius"] == 2
+    assert cells[0]["stroke_width"] == 0.75
 
 
 def test_render_svg_applies_dark_theme() -> None:
@@ -237,3 +239,18 @@ def test_render_svg_applies_dark_theme() -> None:
     cells = cast(list[dict[str, object]], svg.data["cells"])
     assert cells[0]["fill"] == DARK_THEME.hidden.fill
     assert cells[1]["text_fill"] == DARK_THEME.number_color(1)
+
+
+def test_render_svg_classic_theme_uses_square_cells() -> None:
+    board = FakeBoard(
+        width=1,
+        height=1,
+        mine_count=0,
+        cells=[FakeCell(state="hidden")],
+    )
+
+    svg = render_board_svg(board, theme=THEMES["classic"])
+
+    cells = cast(list[dict[str, object]], svg.data["cells"])
+    assert cells[0]["radius"] == 0
+    assert cells[0]["stroke_width"] == 0.75

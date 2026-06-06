@@ -34,7 +34,7 @@
   <text x="{{ row.x }}" y="{{ "%.1f"|format(row.y) }}" class="coord" text-anchor="middle" dominant-baseline="central">{{ row.label }}</text>
   {% endfor %}
   {% for cell in cells %}
-  <rect x="{{ cell.x }}" y="{{ cell.y }}" width="{{ cell.size }}" height="{{ cell.size }}" rx="4" fill="{{ cell.fill }}" stroke="{{ cell.stroke }}"/>
+  <rect x="{{ cell.x }}" y="{{ cell.y }}" width="{{ cell.size }}" height="{{ cell.size }}" rx="{{ cell.radius }}" fill="{{ cell.fill }}" stroke="{{ cell.stroke }}" stroke-width="{{ cell.stroke_width }}"/>
   <text x="{{ "%.1f"|format(cell.text_x) }}" y="{{ "%.1f"|format(cell.text_y) }}" class="cellText" fill="{{ cell.text_fill }}">{{ cell.text }}</text>
   {% endfor %}
 </svg>
