@@ -16,6 +16,7 @@ from shinbot_plugin_renderkit import (
     configure_default_backend,
     configure_default_svg_backend,
     configure_default_typst_backend,
+    probe_renderkit_capabilities,
     render_html_to_bytes,
     render_html_to_file,
     render_svg_template_to_file,
@@ -28,6 +29,11 @@ from shinbot_plugin_renderkit import (
     render_typst_to_file,
 )
 from shinbot_plugin_renderkit.api import _png_dimensions
+from shinbot_plugin_renderkit.backends import (
+    CairoSvgRenderBackend,
+    PlaywrightRenderBackend,
+    TypstCliRenderBackend,
+)
 
 
 class FakeBackend:
@@ -118,6 +124,24 @@ def _png_bytes(*, width: int, height: int) -> bytes:
 
 def _invalid_png_bytes_without_ihdr() -> bytes:
     return b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIDAT" + (b"\x00" * 12)
+
+
+def test_probe_renderkit_capabilities_uses_backend_probes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(PlaywrightRenderBackend, "is_available", lambda **_kwargs: True)
+    monkeypatch.setattr(CairoSvgRenderBackend, "is_available", lambda: False)
+    monkeypatch.setattr(TypstCliRenderBackend, "is_available", lambda **_kwargs: True)
+
+    capabilities = probe_renderkit_capabilities(
+        chromium_executable_path="/usr/bin/chromium",
+        typst_executable_path="/usr/bin/typst",
+    )
+
+    assert capabilities.html is True
+    assert capabilities.svg is False
+    assert capabilities.typst is True
+    assert capabilities.to_dict() == {"html": True, "svg": False, "typst": True}
 
 
 @pytest.mark.asyncio

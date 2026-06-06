@@ -51,6 +51,10 @@ constrained deployments.
 The default Typst backend is the `typst` CLI. It is configured lazily and callers
 may override the executable path through plugin config.
 
+RenderKit exposes a shallow capability probe for backend availability. It checks
+optional Python dependencies and configured executable visibility without
+launching Chromium or compiling a document.
+
 ## Caching
 
 File rendering can cache by hashing the normalized render request:
@@ -71,7 +75,9 @@ backend.
 ## ShinBot Integration
 
 The plugin exposes Python APIs for other plugins. During `setup(plg)`, it also
-tries to register a public `render_html_image` tool when ShinBot provides a
-`ToolRegistry`. It also registers `render_svg_image` for SVG-to-PNG rendering.
-and `render_typst_image` for Typst-to-PNG rendering. The tools are optional and
-should not be the primary plugin-to-plugin integration path.
+tries to register public `render_html_image`, `render_svg_image`, and
+`render_typst_image` tools when ShinBot provides a `ToolRegistry` and the
+corresponding backend is available. The global `tool_enabled` setting disables
+all tool registration. Backend-specific settings can disable only the HTML, SVG,
+or Typst tool. The tools are optional and should not be the primary
+plugin-to-plugin integration path.

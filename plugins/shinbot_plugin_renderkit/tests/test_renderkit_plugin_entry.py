@@ -18,8 +18,11 @@ from shinbot_plugin_renderkit import (
 
 
 class _Logger:
+    def __init__(self) -> None:
+        self.messages: list[tuple[object, ...]] = []
+
     def info(self, *_args: object) -> None:
-        pass
+        self.messages.append(_args)
 
 
 class _FakePlugin:
@@ -39,6 +42,25 @@ class _FakePlugin:
         return decorator
 
 
+@pytest.fixture(autouse=True)
+def _mark_backends_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        shinbot_plugin_renderkit.PlaywrightRenderBackend,
+        "is_available",
+        staticmethod(lambda **_kwargs: True),
+    )
+    monkeypatch.setattr(
+        shinbot_plugin_renderkit.CairoSvgRenderBackend,
+        "is_available",
+        staticmethod(lambda: True),
+    )
+    monkeypatch.setattr(
+        shinbot_plugin_renderkit.TypstCliRenderBackend,
+        "is_available",
+        staticmethod(lambda **_kwargs: True),
+    )
+
+
 def test_register_render_tool_declares_public_html_tool(tmp_path: Path) -> None:
     plugin = _FakePlugin(tmp_path)
 
@@ -53,6 +75,39 @@ def test_register_render_tool_declares_public_html_tool(tmp_path: Path) -> None:
     assert plugin.tools[2]["name"] == "render_typst_image"
     assert "typst" in plugin.tools[2]["tags"]
     assert plugin.tools[2]["input_schema"]["required"] == ["source"]
+
+
+def test_register_render_tool_skips_unavailable_backends(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _FakePlugin(tmp_path)
+    monkeypatch.setattr(
+        shinbot_plugin_renderkit.CairoSvgRenderBackend,
+        "is_available",
+        staticmethod(lambda: False),
+    )
+    monkeypatch.setattr(
+        shinbot_plugin_renderkit.TypstCliRenderBackend,
+        "is_available",
+        staticmethod(lambda **_kwargs: False),
+    )
+
+    _register_render_tool(plugin, RenderKitPluginConfig(), public_visibility="public")
+
+    assert [item["name"] for item in plugin.tools] == ["render_html_image"]
+
+
+def test_register_render_tool_honors_backend_tool_switches(tmp_path: Path) -> None:
+    plugin = _FakePlugin(tmp_path)
+
+    _register_render_tool(
+        plugin,
+        RenderKitPluginConfig(html_tool_enabled=False, typst_tool_enabled=False),
+        public_visibility="public",
+    )
+
+    assert [item["name"] for item in plugin.tools] == ["render_svg_image"]
 
 
 @pytest.mark.asyncio

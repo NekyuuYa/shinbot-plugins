@@ -54,6 +54,23 @@ class ClosableTypstRenderBackend(TypstRenderBackend, Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class RenderKitCapabilities:
+    """Backend capability flags for the current RenderKit environment."""
+
+    html: bool
+    svg: bool
+    typst: bool
+
+    def to_dict(self) -> dict[str, bool]:
+        """Return a JSON-compatible representation."""
+        return {
+            "html": self.html,
+            "svg": self.svg,
+            "typst": self.typst,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class RenderOptions:
     """Options for HTML/CSS image rendering."""
 

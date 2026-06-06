@@ -12,6 +12,7 @@ from typing import Any
 from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend, TypstCliRenderBackend
 from .models import (
     RenderBackend,
+    RenderKitCapabilities,
     RenderOptions,
     RenderResult,
     SvgRenderBackend,
@@ -27,6 +28,24 @@ _DEFAULT_SVG_BACKEND: SvgRenderBackend | None = None
 _DEFAULT_SVG_BACKEND_LOCK = threading.RLock()
 _DEFAULT_TYPST_BACKEND: TypstRenderBackend | None = None
 _DEFAULT_TYPST_BACKEND_LOCK = threading.RLock()
+
+
+def probe_renderkit_capabilities(
+    *,
+    chromium_executable_path: str | None = None,
+    typst_executable_path: str = "typst",
+) -> RenderKitCapabilities:
+    """Return backend availability for the current process environment.
+
+    The probe is intentionally shallow: it checks Python dependencies and
+    configured executable visibility without launching a browser or compiling a
+    document.
+    """
+    return RenderKitCapabilities(
+        html=PlaywrightRenderBackend.is_available(executable_path=chromium_executable_path),
+        svg=CairoSvgRenderBackend.is_available(),
+        typst=TypstCliRenderBackend.is_available(executable_path=typst_executable_path),
+    )
 
 
 def configure_default_backend(backend: RenderBackend | None) -> None:

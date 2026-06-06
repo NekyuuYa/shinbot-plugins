@@ -15,6 +15,7 @@ from shinbot_plugin_renderkit import (
     RenderOptions,
     SvgRenderOptions,
     TypstRenderOptions,
+    probe_renderkit_capabilities,
     render_html_to_file,
     render_svg_template_to_file,
     render_svg_to_file,
@@ -61,12 +62,21 @@ result = await render_typst_template_to_file(
     template_dirs=[plg.data_dir / "templates"],
     output_dir=plg.data_dir / "renders",
 )
+
+capabilities = probe_renderkit_capabilities()
 ```
 
 The default HTML backend uses Playwright/Chromium and is loaded lazily. The
 default SVG backend uses CairoSVG and is also loaded lazily. Tests and callers
 can inject backend objects for deterministic rendering. Typst rendering uses the
 standard `typst` CLI and writes PNG output.
+
+`probe_renderkit_capabilities()` performs a shallow availability check for the
+HTML, SVG, and Typst backends without starting Chromium or compiling a document.
+During ShinBot setup, public rendering tools are registered only when the
+corresponding backend is available. The global `tool_enabled` config disables all
+tools; `html_tool_enabled`, `svg_tool_enabled`, and `typst_tool_enabled` disable
+individual tool registrations while keeping the Python API available.
 
 ## Scope
 

@@ -3,13 +3,33 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import logging
+import os
+import shutil
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from .models import RenderOptions, SvgRenderOptions, TypstRenderOptions
 
 logger = logging.getLogger(__name__)
+
+
+def _module_available(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _executable_available(value: str | None) -> bool:
+    if value is None:
+        return True
+    path = Path(value)
+    if path.parent != Path("."):
+        return path.is_file() and os.access(path, os.X_OK)
+    return shutil.which(value) is not None
 
 
 class PlaywrightRenderBackend:
@@ -42,6 +62,13 @@ class PlaywrightRenderBackend:
         self._active_renders = 0
         self._closing = False
         self._closed = False
+
+    @classmethod
+    def is_available(cls, *, executable_path: str | None = None) -> bool:
+        """Return whether the Playwright dependency and configured binary are visible."""
+        return _module_available("playwright.async_api") and _executable_available(
+            executable_path
+        )
 
     async def render_html_to_bytes(self, html: str, options: RenderOptions) -> bytes:
         """Render HTML to image bytes."""
@@ -218,6 +245,11 @@ class CairoSvgRenderBackend:
             raise ValueError("max_concurrency must be positive.")
         self._semaphore = asyncio.Semaphore(max_concurrency)
 
+    @classmethod
+    def is_available(cls) -> bool:
+        """Return whether the CairoSVG dependency is importable."""
+        return _module_available("cairosvg")
+
     async def render_svg_to_bytes(self, svg: str, options: SvgRenderOptions) -> bytes:
         """Render SVG markup to PNG bytes."""
         options.validate()
@@ -370,6 +402,11 @@ class TypstCliRenderBackend:
             raise ValueError("max_concurrency must be positive.")
         self._executable_path = executable_path
         self._semaphore = asyncio.Semaphore(max_concurrency)
+
+    @classmethod
+    def is_available(cls, *, executable_path: str = "typst") -> bool:
+        """Return whether the configured Typst executable is visible."""
+        return _executable_available(executable_path)
 
     async def render_typst_to_bytes(self, source: str, options: TypstRenderOptions) -> bytes:
         """Render Typst source to PNG bytes."""

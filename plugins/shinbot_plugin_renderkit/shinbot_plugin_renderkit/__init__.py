@@ -17,6 +17,7 @@ from .api import (
     configure_default_backend,
     configure_default_svg_backend,
     configure_default_typst_backend,
+    probe_renderkit_capabilities,
     render_html_to_bytes,
     render_html_to_file,
     render_svg_template_to_bytes,
@@ -31,7 +32,14 @@ from .api import (
     render_typst_to_file,
 )
 from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend, TypstCliRenderBackend
-from .models import ImageFormat, RenderOptions, RenderResult, SvgRenderOptions, TypstRenderOptions
+from .models import (
+    ImageFormat,
+    RenderKitCapabilities,
+    RenderOptions,
+    RenderResult,
+    SvgRenderOptions,
+    TypstRenderOptions,
+)
 from .template import render_template_text
 
 if TYPE_CHECKING:
@@ -55,6 +63,9 @@ class RenderKitPluginConfig(BaseModel):
     typst_executable_path: str = "typst"
     cache_files: bool = True
     tool_enabled: bool = True
+    html_tool_enabled: bool = True
+    svg_tool_enabled: bool = True
+    typst_tool_enabled: bool = True
 
 
 __plugin_config_class__ = RenderKitPluginConfig
@@ -109,6 +120,31 @@ def _register_render_tool(
             raise RuntimeError("ShinBot ToolRegistry types are not available.") from exc
         public_visibility = ToolVisibility.PUBLIC
 
+    if config.html_tool_enabled and PlaywrightRenderBackend.is_available(
+        executable_path=config.chromium_executable_path
+    ):
+        _register_html_render_tool(plg, config, public_visibility)
+    else:
+        plg.logger.info("RenderKit HTML tool registration skipped")
+
+    if config.svg_tool_enabled and CairoSvgRenderBackend.is_available():
+        _register_svg_render_tool(plg, config, public_visibility)
+    else:
+        plg.logger.info("RenderKit SVG tool registration skipped")
+
+    if config.typst_tool_enabled and TypstCliRenderBackend.is_available(
+        executable_path=config.typst_executable_path
+    ):
+        _register_typst_render_tool(plg, config, public_visibility)
+    else:
+        plg.logger.info("RenderKit Typst tool registration skipped")
+
+
+def _register_html_render_tool(
+    plg: Plugin,
+    config: RenderKitPluginConfig,
+    public_visibility: Any,
+) -> None:
     @plg.tool(
         name="render_html_image",
         display_name="Render HTML Image",
@@ -161,6 +197,12 @@ def _register_render_tool(
         )
         return result.to_dict()
 
+
+def _register_svg_render_tool(
+    plg: Plugin,
+    config: RenderKitPluginConfig,
+    public_visibility: Any,
+) -> None:
     @plg.tool(
         name="render_svg_image",
         display_name="Render SVG Image",
@@ -215,6 +257,12 @@ def _register_render_tool(
         )
         return result.to_dict()
 
+
+def _register_typst_render_tool(
+    plg: Plugin,
+    config: RenderKitPluginConfig,
+    public_visibility: Any,
+) -> None:
     @plg.tool(
         name="render_typst_image",
         display_name="Render Typst Image",
@@ -307,6 +355,7 @@ def _load_plugin_config(plugin_id: str) -> RenderKitPluginConfig:
 
 __all__ = [
     "RenderKitPluginConfig",
+    "RenderKitCapabilities",
     "RenderOptions",
     "RenderResult",
     "SvgRenderOptions",
@@ -317,6 +366,7 @@ __all__ = [
     "configure_default_backend",
     "configure_default_svg_backend",
     "configure_default_typst_backend",
+    "probe_renderkit_capabilities",
     "render_html_to_bytes",
     "render_html_to_file",
     "render_svg_template_to_bytes",
