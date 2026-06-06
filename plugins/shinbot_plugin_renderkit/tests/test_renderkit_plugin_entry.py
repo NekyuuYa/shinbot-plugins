@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+import shinbot_plugin_renderkit
 from shinbot_plugin_renderkit import (
     RenderKitPluginConfig,
     _load_plugin_config,
@@ -115,6 +116,41 @@ async def test_typst_render_tool_rejects_invalid_page_and_ppi(tmp_path: Path) ->
         await handler("Hello", ppi=0)
     with pytest.raises(ValueError, match="PPI"):
         await handler("Hello", ppi=1201)
+
+
+@pytest.mark.asyncio
+async def test_typst_render_tool_uses_restricted_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plugin = _FakePlugin(tmp_path)
+    calls: list[dict[str, Any]] = []
+
+    async def fake_render_typst_to_file(*_args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+
+        class Result:
+            def to_dict(self) -> dict[str, object]:
+                return {
+                    "path": str(tmp_path / "renders" / "typst.png"),
+                    "mime_type": "image/png",
+                    "width": 100,
+                    "height": 50,
+                    "cached": False,
+                }
+
+        return Result()
+
+    monkeypatch.setattr(shinbot_plugin_renderkit, "render_typst_to_file", fake_render_typst_to_file)
+    _register_render_tool(plugin, RenderKitPluginConfig(), public_visibility="public")
+    handler = plugin.tools[2]["handler"]
+
+    result = await handler("Hello")
+
+    options = calls[0]["options"]
+    assert result["mime_type"] == "image/png"
+    assert options.root == tmp_path / "typst-root"
+    assert options.root.is_dir()
 
 
 def test_load_plugin_config_reads_shinbot_config_block(

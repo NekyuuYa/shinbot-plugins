@@ -250,10 +250,13 @@ def _register_render_tool(
         page: int = 1,
         ppi: int = 144,
     ) -> dict[str, object]:
+        typst_root = Path(plg.data_dir) / "typst-root"
+        typst_root.mkdir(parents=True, exist_ok=True)
         options = TypstRenderOptions(
             page=page,
             ppi=ppi,
             timeout_ms=config.default_timeout_ms,
+            root=typst_root,
         )
         result = await render_typst_to_file(
             source,

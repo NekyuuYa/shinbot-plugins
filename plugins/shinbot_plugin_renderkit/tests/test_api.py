@@ -27,6 +27,7 @@ from shinbot_plugin_renderkit import (
     render_typst_to_bytes,
     render_typst_to_file,
 )
+from shinbot_plugin_renderkit.api import _png_dimensions
 
 
 class FakeBackend:
@@ -113,6 +114,10 @@ def _png_bytes(*, width: int, height: int) -> bytes:
         + height.to_bytes(4, "big")
         + b"\x08\x06\x00\x00\x00"
     )
+
+
+def _invalid_png_bytes_without_ihdr() -> bytes:
+    return b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIDAT" + (b"\x00" * 12)
 
 
 @pytest.mark.asyncio
@@ -289,6 +294,21 @@ async def test_render_typst_to_file_writes_and_reuses_cache(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_render_typst_to_file_rejects_oversized_output(tmp_path: Path) -> None:
+    backend = FakeTypstBackend(payload=_png_bytes(width=5000, height=360))
+
+    with pytest.raises(ValueError, match="dimensions"):
+        await render_typst_to_file(
+            "Hello",
+            output_dir=tmp_path,
+            options=TypstRenderOptions(max_width=4096, max_height=4096),
+            backend=backend,
+        )
+
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.asyncio
 async def test_render_html_to_file_accepts_explicit_filename(tmp_path: Path) -> None:
     backend = FakeBackend(payload=b"named")
 
@@ -433,3 +453,14 @@ def test_typst_render_options_validate_rejects_invalid_values() -> None:
 
     with pytest.raises(ValueError, match="jobs"):
         TypstRenderOptions(jobs=0).validate()
+
+    with pytest.raises(ValueError, match="max width"):
+        TypstRenderOptions(max_width=0).validate()
+
+    with pytest.raises(ValueError, match="max height"):
+        TypstRenderOptions(max_height=0).validate()
+
+
+def test_png_dimensions_rejects_non_ihdr_first_chunk() -> None:
+    with pytest.raises(ValueError, match="PNG"):
+        _png_dimensions(_invalid_png_bytes_without_ihdr())

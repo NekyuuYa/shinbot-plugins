@@ -311,6 +311,7 @@ async def render_typst_to_file(
     )
     if cache and target_path.is_file():
         width, height = _png_dimensions(target_path.read_bytes())
+        _validate_typst_dimensions(width, height, active_options)
         return RenderResult(
             path=target_path,
             mime_type=active_options.mime_type,
@@ -324,8 +325,9 @@ async def render_typst_to_file(
         options=active_options,
         backend=backend,
     )
-    target_path.write_bytes(image_bytes)
     width, height = _png_dimensions(image_bytes)
+    _validate_typst_dimensions(width, height, active_options)
+    target_path.write_bytes(image_bytes)
     return RenderResult(
         path=target_path,
         mime_type=active_options.mime_type,
@@ -507,6 +509,8 @@ def _resolve_typst_filename(
             "page": options.page,
             "ppi": options.ppi,
             "root": str(options.root) if options.root is not None else None,
+            "max_width": options.max_width,
+            "max_height": options.max_height,
             "font_paths": [str(item) for item in options.font_paths],
             "package_path": (
                 str(options.package_path) if options.package_path is not None else None
@@ -527,9 +531,25 @@ def _resolve_typst_filename(
 
 
 def _png_dimensions(image_bytes: bytes) -> tuple[int, int]:
-    if len(image_bytes) < 24 or not image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+    if (
+        len(image_bytes) < 24
+        or not image_bytes.startswith(b"\x89PNG\r\n\x1a\n")
+        or image_bytes[12:16] != b"IHDR"
+    ):
         raise ValueError("Image bytes are not a PNG document.")
     return (
         int.from_bytes(image_bytes[16:20], "big"),
         int.from_bytes(image_bytes[20:24], "big"),
     )
+
+
+def _validate_typst_dimensions(
+    width: int,
+    height: int,
+    options: TypstRenderOptions,
+) -> None:
+    if width > options.max_width or height > options.max_height:
+        raise ValueError(
+            "Typst output dimensions exceed configured limits: "
+            f"{width}x{height} > {options.max_width}x{options.max_height}."
+        )

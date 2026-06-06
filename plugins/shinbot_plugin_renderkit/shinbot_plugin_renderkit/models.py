@@ -139,6 +139,8 @@ class TypstRenderOptions:
     ppi: int = 144
     timeout_ms: int = 30_000
     root: str | Path | None = None
+    max_width: int = 4096
+    max_height: int = 4096
     font_paths: tuple[str | Path, ...] = ()
     package_path: str | Path | None = None
     package_cache_path: str | Path | None = None
@@ -158,6 +160,10 @@ class TypstRenderOptions:
             raise ValueError("Typst PPI must be no greater than 1200.")
         if self.timeout_ms <= 0:
             raise ValueError("Timeout must be positive.")
+        if self.max_width <= 0:
+            raise ValueError("Typst max width must be positive.")
+        if self.max_height <= 0:
+            raise ValueError("Typst max height must be positive.")
         if self.jobs is not None and self.jobs <= 0:
             raise ValueError("Typst jobs must be positive.")
 

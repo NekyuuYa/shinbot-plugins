@@ -395,7 +395,10 @@ class TypstCliRenderBackend:
                 )
             except TimeoutError as exc:
                 process.kill()
-                await process.wait()
+                try:
+                    await asyncio.wait_for(process.communicate(), timeout=5)
+                except TimeoutError:
+                    await process.wait()
                 raise RuntimeError("Typst rendering timed out.") from exc
         if process.returncode != 0:
             message = stderr.decode("utf-8", errors="replace").strip()
