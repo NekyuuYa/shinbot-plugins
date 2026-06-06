@@ -11,6 +11,7 @@ import pytest
 
 from shinbot_plugin_minesweeper import (
     MinesweeperPluginConfig,
+    __plugin_locales__,
     _handle_root_command,
     _handle_shortcut,
 )
@@ -116,6 +117,22 @@ def _install_fake_image_modules(
     monkeypatch.setitem(sys.modules, "shinbot.schema.elements", elements_module)
     monkeypatch.setitem(sys.modules, "shinbot_plugin_renderkit", renderkit_module)
     return calls
+
+
+def test_plugin_locales_cover_config_schema() -> None:
+    zh = __plugin_locales__["zh-CN"]
+    en = __plugin_locales__["en-US"]
+
+    for field_name in MinesweeperPluginConfig.model_fields:
+        assert f"config.fields.{field_name}.label" in zh
+        assert f"config.fields.{field_name}.label" in en
+        assert f"config.fields.{field_name}.description" in zh
+        assert f"config.fields.{field_name}.description" in en
+
+    assert zh["config.title"] == "扫雷设置"
+    assert zh["config.fields.shortcut_prefix.label"] == "快捷指令前缀"
+    assert zh["config.fields.theme.options.dark"] == "深色"
+    assert en["config.fields.render_mode.options.image"] == "Image"
 
 
 @pytest.mark.asyncio

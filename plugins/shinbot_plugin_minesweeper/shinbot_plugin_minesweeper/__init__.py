@@ -49,6 +49,132 @@ if TYPE_CHECKING:
 
 __plugin_name__ = "Minesweeper"
 __plugin_description__ = "Session-scoped chat minesweeper game."
+__plugin_locales__ = {
+    "en-US": {
+        "meta.name": "Minesweeper",
+        "meta.description": "Session-scoped chat minesweeper game.",
+        "config.title": "Minesweeper Settings",
+        "config.description": (
+            "Configure board defaults, rendering, shortcuts, and message cleanup."
+        ),
+        "config.fields.default_difficulty.label": "Default Difficulty",
+        "config.fields.default_difficulty.description": (
+            "Difficulty used by a bare /ms start command."
+        ),
+        "config.fields.default_difficulty.options.easy": "Easy",
+        "config.fields.default_difficulty.options.normal": "Normal",
+        "config.fields.default_difficulty.options.hard": "Hard",
+        "config.fields.default_custom_width.label": "Default Custom Width",
+        "config.fields.default_custom_width.description": "Width used when creating custom boards.",
+        "config.fields.default_custom_height.label": "Default Custom Height",
+        "config.fields.default_custom_height.description": (
+            "Height used when creating custom boards."
+        ),
+        "config.fields.default_custom_mines.label": "Default Custom Mines",
+        "config.fields.default_custom_mines.description": (
+            "Mine count used when creating custom boards."
+        ),
+        "config.fields.max_width.label": "Maximum Width",
+        "config.fields.max_width.description": "Largest allowed custom board width.",
+        "config.fields.max_height.label": "Maximum Height",
+        "config.fields.max_height.description": "Largest allowed custom board height.",
+        "config.fields.max_mines.label": "Maximum Mines",
+        "config.fields.max_mines.description": "Largest allowed custom mine count.",
+        "config.fields.allow_custom.label": "Allow Custom Boards",
+        "config.fields.allow_custom.description": "Allow users to start games with custom sizes.",
+        "config.fields.persist_games.label": "Persist Games",
+        "config.fields.persist_games.description": "Save session games to JSON files.",
+        "config.fields.reveal_mines_on_loss.label": "Reveal Mines On Loss",
+        "config.fields.reveal_mines_on_loss.description": "Show all mines after a lost game.",
+        "config.fields.show_coordinates.label": "Show Coordinates",
+        "config.fields.show_coordinates.description": (
+            "Show row and column coordinates on text boards."
+        ),
+        "config.fields.ascii_symbols.label": "ASCII Symbols",
+        "config.fields.ascii_symbols.description": (
+            "Use ASCII board symbols instead of Unicode symbols."
+        ),
+        "config.fields.render_mode.label": "Render Mode",
+        "config.fields.render_mode.description": "How the plugin sends board output.",
+        "config.fields.render_mode.options.text": "Text",
+        "config.fields.render_mode.options.auto": "Auto",
+        "config.fields.render_mode.options.image": "Image",
+        "config.fields.theme.label": "Default Image Theme",
+        "config.fields.theme.description": "Default color theme for image boards.",
+        "config.fields.theme.options.light": "Light",
+        "config.fields.theme.options.dark": "Dark",
+        "config.fields.theme.options.classic": "Classic",
+        "config.fields.shortcut_prefix.label": "Shortcut Prefix",
+        "config.fields.shortcut_prefix.description": (
+            "Prefix for shortcut commands such as ,op or .op."
+        ),
+        "config.fields.image_scale.label": "Image Scale",
+        "config.fields.image_scale.description": "Scale factor for rendered board images.",
+        "config.fields.recall_old_boards.label": "Recall Old Boards",
+        "config.fields.recall_old_boards.description": "Delete older board messages when possible.",
+        "config.fields.keep_recent_board_messages.label": "Recent Boards To Keep",
+        "config.fields.keep_recent_board_messages.description": (
+            "Number of recent board messages to keep."
+        ),
+        "config.fields.session_idle_ttl_seconds.label": "Session Idle TTL",
+        "config.fields.session_idle_ttl_seconds.description": (
+            "Seconds before idle session games are cleaned up."
+        ),
+    },
+    "zh-CN": {
+        "meta.name": "扫雷",
+        "meta.description": "按会话保存的聊天扫雷游戏。",
+        "config.title": "扫雷设置",
+        "config.description": "配置默认棋盘、渲染方式、快捷指令和消息清理。",
+        "config.fields.default_difficulty.label": "默认难度",
+        "config.fields.default_difficulty.description": "无参数 /ms start 使用的难度。",
+        "config.fields.default_difficulty.options.easy": "简单",
+        "config.fields.default_difficulty.options.normal": "普通",
+        "config.fields.default_difficulty.options.hard": "困难",
+        "config.fields.default_custom_width.label": "默认自定义宽度",
+        "config.fields.default_custom_width.description": "创建自定义棋盘时使用的默认宽度。",
+        "config.fields.default_custom_height.label": "默认自定义高度",
+        "config.fields.default_custom_height.description": "创建自定义棋盘时使用的默认高度。",
+        "config.fields.default_custom_mines.label": "默认自定义雷数",
+        "config.fields.default_custom_mines.description": "创建自定义棋盘时使用的默认雷数。",
+        "config.fields.max_width.label": "最大宽度",
+        "config.fields.max_width.description": "允许的最大自定义棋盘宽度。",
+        "config.fields.max_height.label": "最大高度",
+        "config.fields.max_height.description": "允许的最大自定义棋盘高度。",
+        "config.fields.max_mines.label": "最大雷数",
+        "config.fields.max_mines.description": "允许的最大自定义雷数。",
+        "config.fields.allow_custom.label": "允许自定义棋盘",
+        "config.fields.allow_custom.description": "允许用户用自定义尺寸开局。",
+        "config.fields.persist_games.label": "持久化游戏",
+        "config.fields.persist_games.description": "将会话游戏保存为 JSON 文件。",
+        "config.fields.reveal_mines_on_loss.label": "失败时揭示地雷",
+        "config.fields.reveal_mines_on_loss.description": "失败后是否显示所有地雷。",
+        "config.fields.show_coordinates.label": "显示坐标",
+        "config.fields.show_coordinates.description": "文本棋盘是否显示行列坐标。",
+        "config.fields.ascii_symbols.label": "ASCII 符号",
+        "config.fields.ascii_symbols.description": "使用 ASCII 棋盘符号替代 Unicode 符号。",
+        "config.fields.render_mode.label": "渲染模式",
+        "config.fields.render_mode.description": "棋盘消息的输出方式。",
+        "config.fields.render_mode.options.text": "文本",
+        "config.fields.render_mode.options.auto": "自动",
+        "config.fields.render_mode.options.image": "图片",
+        "config.fields.theme.label": "默认图片主题",
+        "config.fields.theme.description": "图片棋盘默认使用的配色主题。",
+        "config.fields.theme.options.light": "浅色",
+        "config.fields.theme.options.dark": "深色",
+        "config.fields.theme.options.classic": "经典",
+        "config.fields.shortcut_prefix.label": "快捷指令前缀",
+        "config.fields.shortcut_prefix.description": "快捷指令前缀，例如 ,op 或 .op。",
+        "config.fields.image_scale.label": "图片缩放",
+        "config.fields.image_scale.description": "棋盘图片渲染时使用的缩放倍数。",
+        "config.fields.recall_old_boards.label": "撤回旧棋盘",
+        "config.fields.recall_old_boards.description": "适配器支持时删除较旧的棋盘消息。",
+        "config.fields.keep_recent_board_messages.label": "保留最近棋盘数",
+        "config.fields.keep_recent_board_messages.description": "保留多少条最近棋盘消息不撤回。",
+        "config.fields.session_idle_ttl_seconds.label": "会话闲置 TTL",
+        "config.fields.session_idle_ttl_seconds.description": "会话游戏闲置多少秒后清理。",
+    },
+}
 
 _STORE: GameStore[GameState] | None = None
 _ENGINE = MinesweeperEngine()
