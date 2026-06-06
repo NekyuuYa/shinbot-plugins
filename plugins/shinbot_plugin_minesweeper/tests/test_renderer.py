@@ -4,8 +4,12 @@ from dataclasses import dataclass
 from typing import cast
 
 from shinbot_plugin_minesweeper.renderer import (
+    DARK_THEME,
+    LIGHT_THEME,
+    THEMES,
     RenderContext,
     RenderOptions,
+    get_theme,
     render_board,
     render_board_svg,
     render_help,
@@ -151,3 +155,42 @@ def test_render_help_mentions_empty_ms_usage() -> None:
     assert "扫雷帮助" in rendered
     assert "/ms start easy|normal|hard" in rendered
     assert ",op a1 b1" in rendered
+
+
+def test_theme_registry_and_fallback() -> None:
+    assert set(THEMES) == {"light", "dark", "classic"}
+    assert get_theme(None) is LIGHT_THEME
+    assert get_theme("DARK") is DARK_THEME
+    assert get_theme("does-not-exist") is LIGHT_THEME
+
+
+def test_render_svg_defaults_to_light_theme() -> None:
+    board = FakeBoard(
+        width=1,
+        height=1,
+        mine_count=0,
+        cells=[FakeCell(state="hidden")],
+    )
+
+    svg = render_board_svg(board)
+
+    assert svg.data["background"] == LIGHT_THEME.background
+    cells = cast(list[dict[str, object]], svg.data["cells"])
+    assert cells[0]["fill"] == LIGHT_THEME.hidden.fill
+
+
+def test_render_svg_applies_dark_theme() -> None:
+    board = FakeBoard(
+        width=2,
+        height=1,
+        mine_count=0,
+        cells=[FakeCell(state="hidden"), FakeCell(adjacent_mines=1, state="revealed")],
+    )
+
+    svg = render_board_svg(board, theme=DARK_THEME)
+
+    assert svg.data["background"] == DARK_THEME.background
+    assert svg.data["title_fill"] == DARK_THEME.title_fill
+    cells = cast(list[dict[str, object]], svg.data["cells"])
+    assert cells[0]["fill"] == DARK_THEME.hidden.fill
+    assert cells[1]["text_fill"] == DARK_THEME.number_color(1)

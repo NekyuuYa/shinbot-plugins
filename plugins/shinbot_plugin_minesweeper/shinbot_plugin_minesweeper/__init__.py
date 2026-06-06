@@ -33,6 +33,8 @@ from .renderer import (
     RenderContext,
     RenderOptions,
     SvgBoard,
+    Theme,
+    get_theme,
     render_board,
     render_board_svg,
     render_error,
@@ -67,6 +69,7 @@ class MinesweeperPluginConfig(BaseModel):
     show_coordinates: bool = True
     ascii_symbols: bool = False
     render_mode: Literal["text", "auto", "image"] = "auto"
+    theme: Literal["light", "dark", "classic"] = "light"
     image_scale: float = Field(default=1.0, gt=0, le=4)
     recall_old_boards: bool = True
     keep_recent_board_messages: int = Field(default=2, ge=1, le=5)
@@ -463,12 +466,14 @@ async def _render_game_message(
     config: MinesweeperPluginConfig,
     logger: Any,
     render_dir: Path | None,
+    theme: Theme | None = None,
 ) -> object:
     image = await _try_render_game_image(
         game,
         config=config,
         logger=logger,
         render_dir=render_dir,
+        theme=theme,
     )
     if image is not None:
         return image
@@ -481,6 +486,7 @@ async def _try_render_game_image(
     config: MinesweeperPluginConfig,
     logger: Any,
     render_dir: Path | None,
+    theme: Theme | None = None,
 ) -> list[Any] | None:
     if config.render_mode == "text" or render_dir is None:
         return None
@@ -499,7 +505,7 @@ async def _try_render_game_image(
         if not probe_renderkit_capabilities().svg:
             logger.debug("Minesweeper image rendering skipped: SVG backend unavailable")
             return None
-        svg = _render_game_board_svg(game, config=config)
+        svg = _render_game_board_svg(game, config=config, theme=theme)
         result = await render_svg_template_to_file(
             svg.template,
             data=svg.data,
@@ -541,7 +547,12 @@ def _render_game_board(game: GameState, *, config: MinesweeperPluginConfig) -> s
     return render_board(game.board, context=context, options=options)
 
 
-def _render_game_board_svg(game: GameState, *, config: MinesweeperPluginConfig) -> SvgBoard:
+def _render_game_board_svg(
+    game: GameState,
+    *,
+    config: MinesweeperPluginConfig,
+    theme: Theme | None = None,
+) -> SvgBoard:
     context = RenderContext(
         difficulty=game.difficulty,
         status=game.status,
@@ -555,7 +566,12 @@ def _render_game_board_svg(game: GameState, *, config: MinesweeperPluginConfig) 
         include_hints=False,
         reveal_mines_on_loss=config.reveal_mines_on_loss,
     )
-    return render_board_svg(game.board, context=context, options=options)
+    return render_board_svg(
+        game.board,
+        context=context,
+        options=options,
+        theme=theme or get_theme(config.theme),
+    )
 
 
 async def _recall_old_boards(

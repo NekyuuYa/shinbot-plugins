@@ -64,6 +64,134 @@ ASCII_SYMBOLS = RenderSymbols(hidden="#", flag="F", empty=".", mine="*", explode
 
 
 @dataclass(frozen=True, slots=True)
+class CellColors:
+    """Fill, stroke, and text colors for one cell state."""
+
+    fill: str
+    stroke: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class Theme:
+    """A complete color theme for the SVG board.
+
+    Only image rendering uses themes; the plain-text board is unaffected.
+    """
+
+    name: str
+    background: str
+    title_fill: str
+    meta_fill: str
+    coord_fill: str
+    hidden: CellColors
+    flagged: CellColors
+    exploded: CellColors
+    mine: CellColors
+    empty: CellColors
+    revealed_fill: str
+    revealed_stroke: str
+    numbers: dict[int, str]
+
+    def number_color(self, value: int) -> str:
+        """Return the text color for a numbered cell."""
+        return self.numbers.get(value, self.numbers.get(0, "#64748b"))
+
+
+LIGHT_THEME = Theme(
+    name="light",
+    background="#f7f8fb",
+    title_fill="#172033",
+    meta_fill="#536172",
+    coord_fill="#667085",
+    hidden=CellColors(fill="#334155", stroke="#1e293b", text="#93c5fd"),
+    flagged=CellColors(fill="#f59e0b", stroke="#b45309", text="#ffffff"),
+    exploded=CellColors(fill="#ef4444", stroke="#b91c1c", text="#ffffff"),
+    mine=CellColors(fill="#111827", stroke="#030712", text="#ffffff"),
+    empty=CellColors(fill="#ffffff", stroke="#cbd5e1", text="#94a3b8"),
+    revealed_fill="#ffffff",
+    revealed_stroke="#cbd5e1",
+    numbers={
+        0: "#64748b",
+        1: "#2563eb",
+        2: "#16a34a",
+        3: "#dc2626",
+        4: "#7c3aed",
+        5: "#b45309",
+        6: "#0891b2",
+        7: "#111827",
+        8: "#64748b",
+    },
+)
+
+DARK_THEME = Theme(
+    name="dark",
+    background="#0f172a",
+    title_fill="#e2e8f0",
+    meta_fill="#94a3b8",
+    coord_fill="#64748b",
+    hidden=CellColors(fill="#1e293b", stroke="#0f172a", text="#94a3b8"),
+    flagged=CellColors(fill="#f59e0b", stroke="#b45309", text="#1f2937"),
+    exploded=CellColors(fill="#ef4444", stroke="#991b1b", text="#ffffff"),
+    mine=CellColors(fill="#020617", stroke="#000000", text="#f87171"),
+    empty=CellColors(fill="#334155", stroke="#475569", text="#64748b"),
+    revealed_fill="#334155",
+    revealed_stroke="#475569",
+    numbers={
+        0: "#94a3b8",
+        1: "#60a5fa",
+        2: "#4ade80",
+        3: "#f87171",
+        4: "#c084fc",
+        5: "#fbbf24",
+        6: "#22d3ee",
+        7: "#e2e8f0",
+        8: "#94a3b8",
+    },
+)
+
+CLASSIC_THEME = Theme(
+    name="classic",
+    background="#c0c0c0",
+    title_fill="#000000",
+    meta_fill="#333333",
+    coord_fill="#000080",
+    hidden=CellColors(fill="#c6c6c6", stroke="#7f7f7f", text="#555555"),
+    flagged=CellColors(fill="#c6c6c6", stroke="#7f7f7f", text="#d40000"),
+    exploded=CellColors(fill="#ff0000", stroke="#7f0000", text="#000000"),
+    mine=CellColors(fill="#c6c6c6", stroke="#7f7f7f", text="#000000"),
+    empty=CellColors(fill="#e0e0e0", stroke="#b0b0b0", text="#b0b0b0"),
+    revealed_fill="#e0e0e0",
+    revealed_stroke="#b0b0b0",
+    numbers={
+        0: "#7b7b7b",
+        1: "#0000ff",
+        2: "#007b00",
+        3: "#ff0000",
+        4: "#00007b",
+        5: "#7b0000",
+        6: "#007b7b",
+        7: "#000000",
+        8: "#7b7b7b",
+    },
+)
+
+THEMES: dict[str, Theme] = {
+    LIGHT_THEME.name: LIGHT_THEME,
+    DARK_THEME.name: DARK_THEME,
+    CLASSIC_THEME.name: CLASSIC_THEME,
+}
+
+
+def get_theme(name: str | None) -> Theme:
+    """Return the theme for a name, falling back to the light theme."""
+
+    if name is None:
+        return LIGHT_THEME
+    return THEMES.get(name.lower(), LIGHT_THEME)
+
+
+@dataclass(frozen=True, slots=True)
 class RenderOptions:
     """Rendering options for text board output."""
 
@@ -152,11 +280,13 @@ def render_board_svg(
     *,
     context: RenderContext | None = None,
     options: RenderOptions | None = None,
+    theme: Theme | None = None,
 ) -> SvgBoard:
     """Prepare package-template data for a minesweeper SVG board."""
 
     active_context = context or RenderContext()
     active_options = options or RenderOptions(include_hints=False)
+    active_theme = theme or LIGHT_THEME
     symbols = UNICODE_SYMBOLS if not active_options.ascii else ASCII_SYMBOLS
     _validate_board(board)
 
@@ -209,6 +339,7 @@ def render_board_svg(
                 symbols=symbols,
                 context=active_context,
                 reveal_all=reveal_all,
+                show_cell_coords=True,
             )
             fill, stroke, text_fill = _svg_cell_colors(
                 cell,
@@ -216,6 +347,7 @@ def render_board_svg(
                 y=y,
                 context=active_context,
                 reveal_all=reveal_all,
+                theme=active_theme,
             )
             cells.append(
                 {
@@ -239,6 +371,10 @@ def render_board_svg(
             "height": height,
             "title": title,
             "subtitle": subtitle,
+            "background": active_theme.background,
+            "title_fill": active_theme.title_fill,
+            "meta_fill": active_theme.meta_fill,
+            "coord_fill": active_theme.coord_fill,
             "columns": columns,
             "rows": rows,
             "cells": cells,
@@ -321,6 +457,7 @@ def _render_cell(
     symbols: RenderSymbols,
     context: RenderContext,
     reveal_all: bool,
+    show_cell_coords: bool = False,
 ) -> str:
     if context.exploded_cell == (x, y):
         return symbols.exploded
@@ -329,6 +466,8 @@ def _render_cell(
     if state == "flagged" and not reveal_all:
         return symbols.flag
     if state == "hidden" and not reveal_all:
+        if show_cell_coords:
+            return cell_label(x, y).lower()
         return symbols.hidden
     if cell.has_mine:
         return symbols.mine
@@ -356,33 +495,20 @@ def _svg_cell_colors(
     y: int,
     context: RenderContext,
     reveal_all: bool,
+    theme: Theme,
 ) -> tuple[str, str, str]:
     if context.exploded_cell == (x, y):
-        return ("#ef4444", "#b91c1c", "#ffffff")
+        return (theme.exploded.fill, theme.exploded.stroke, theme.exploded.text)
     state = _state_value(cell)
     if state == "flagged" and not reveal_all:
-        return ("#f59e0b", "#b45309", "#ffffff")
+        return (theme.flagged.fill, theme.flagged.stroke, theme.flagged.text)
     if state == "hidden" and not reveal_all:
-        return ("#334155", "#1e293b", "#dbeafe")
+        return (theme.hidden.fill, theme.hidden.stroke, theme.hidden.text)
     if cell.has_mine:
-        return ("#111827", "#030712", "#ffffff")
+        return (theme.mine.fill, theme.mine.stroke, theme.mine.text)
     if cell.adjacent_mines <= 0:
-        return ("#ffffff", "#cbd5e1", "#94a3b8")
-    return ("#ffffff", "#cbd5e1", _number_color(cell.adjacent_mines))
-
-
-def _number_color(value: int) -> str:
-    colors = {
-        1: "#2563eb",
-        2: "#16a34a",
-        3: "#dc2626",
-        4: "#7c3aed",
-        5: "#b45309",
-        6: "#0891b2",
-        7: "#111827",
-        8: "#64748b",
-    }
-    return colors.get(value, "#64748b")
+        return (theme.empty.fill, theme.empty.stroke, theme.empty.text)
+    return (theme.revealed_fill, theme.revealed_stroke, theme.number_color(cell.adjacent_mines))
 
 
 def _validate_board(board: BoardView) -> None:
