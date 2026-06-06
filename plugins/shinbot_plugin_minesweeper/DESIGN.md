@@ -2,15 +2,19 @@
 
 ## Rendering
 
-The plugin renders a compact plain-text board so it works on every ShinBot
-adapter without image upload support. The default renderer uses Unicode symbols,
-with an ASCII fallback controlled by config.
+The plugin can render either an image board or a compact plain-text board. The
+default `render_mode` is `auto`: it sends an image when the optional RenderKit
+plugin and its SVG backend are available, and otherwise falls back to the
+plain-text board so the game still works on every ShinBot adapter without image
+upload support. The text renderer uses Unicode symbols, with an ASCII fallback
+controlled by config.
 
-When `render_mode` is set to `auto` or `image`, the plugin can use the optional
+When `render_mode` is `auto` (default) or `image`, the plugin uses the optional
 RenderKit plugin to render a standard SVG board into a PNG image and send it as
 an `img` message element. This is a best-effort path: if RenderKit is not
 installed, its SVG backend is unavailable, or rendering fails, the plugin falls
-back to the plain-text board. The SVG generation stays inside the minesweeper
+back to the plain-text board. Setting `render_mode` to `text` forces text
+output and skips the RenderKit code path entirely. The SVG generation stays inside the minesweeper
 plugin because it owns game-specific board semantics; RenderKit only provides
 generic image rasterization.
 
