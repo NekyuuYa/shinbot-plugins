@@ -289,7 +289,7 @@ def render_board_svg(
     active_context = context or RenderContext()
     active_options = options or RenderOptions(include_hints=False)
     active_theme = theme or LIGHT_THEME
-    symbols = UNICODE_SYMBOLS if not active_options.ascii else ASCII_SYMBOLS
+    symbols = ASCII_SYMBOLS
     _validate_board(board)
 
     cell_size = 34
@@ -303,15 +303,15 @@ def render_board_svg(
     flag_count = sum(1 for cell in board.cells if _state_value(cell) == "flagged")
 
     title = (
-        f"扫雷 {active_context.difficulty} {board.width}x{board.height} / "
-        f"{board.mine_count} 雷 / 步数 {active_context.moves}"
+        f"Minesweeper {active_context.difficulty} {board.width}x{board.height} / "
+        f"mines {board.mine_count} / moves {active_context.moves}"
     )
-    subtitle_parts = [f"标记 {flag_count}/{board.mine_count}"]
-    status = _status_line(active_context)
+    subtitle_parts = [f"flags {flag_count}/{board.mine_count}"]
+    status = _svg_status_line(active_context)
     if status:
         subtitle_parts.append(status)
     if active_context.last_action:
-        subtitle_parts.append(f"本次：{active_context.last_action}")
+        subtitle_parts.append(f"last: {_svg_last_action(active_context.last_action)}")
     subtitle = " | ".join(subtitle_parts)
     columns: list[dict[str, object]] = []
     rows: list[dict[str, object]] = []
@@ -489,6 +489,32 @@ def _status_line(context: RenderContext) -> str | None:
     if context.status == "quit":
         return "已结束本局。"
     return None
+
+
+def _svg_status_line(context: RenderContext) -> str | None:
+    if context.status == "won":
+        return "won"
+    if context.status == "lost":
+        if context.exploded_cell is not None:
+            return f"lost: {cell_label(*context.exploded_cell)}"
+        return "lost"
+    if context.status == "quit":
+        return "quit"
+    return None
+
+
+def _svg_last_action(value: str) -> str:
+    replacements = {
+        "打开 ": "open ",
+        "标记 ": "flag ",
+        "连开 ": "chord ",
+        "踩雷 ": "mine ",
+        "踩雷": "mine",
+    }
+    result = value
+    for source, target in replacements.items():
+        result = result.replace(source, target)
+    return "".join(char if ord(char) < 128 else " " for char in result).strip()
 
 
 def _svg_cell_colors(

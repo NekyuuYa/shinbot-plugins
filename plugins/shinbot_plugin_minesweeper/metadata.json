@@ -1,7 +1,7 @@
 {
   "id": "shinbot_plugin_minesweeper",
   "name": "Minesweeper",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "ShinBot Contributors",
   "description": "Session-scoped chat minesweeper game with command and comma shortcut controls.",
   "entry": "shinbot_plugin_minesweeper/__init__.py",

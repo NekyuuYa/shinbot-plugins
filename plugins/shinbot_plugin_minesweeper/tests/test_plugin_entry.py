@@ -216,7 +216,7 @@ async def test_image_render_mode_sends_renderkit_image(
     assert sent[0]["type"] == "img"
     assert sent[0]["attrs"]["src"] == "/tmp/minesweeper.png"
     assert calls[0]["args"][0] == "board.svg.j2"
-    assert calls[0]["data"]["title"].startswith("扫雷 easy")
+    assert calls[0]["data"]["title"].startswith("Minesweeper easy")
     assert calls[0]["output_dir"] == tmp_path
     assert calls[0]["template_dirs"][0].name == "templates"
 

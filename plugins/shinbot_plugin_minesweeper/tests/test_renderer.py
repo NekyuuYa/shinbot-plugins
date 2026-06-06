@@ -143,10 +143,45 @@ def test_render_svg_returns_template_data() -> None:
     assert svg.template_dirs[0].name == "templates"
     assert svg.width > 0
     assert svg.height > 0
-    assert svg.data["title"] == "扫雷 easy 2x1 / 1 雷 / 步数 2"
-    assert "本次：标记 a1" in str(svg.data["subtitle"])
+    assert svg.data["title"] == "Minesweeper easy 2x1 / mines 1 / moves 2"
+    assert "last: flag a1" in str(svg.data["subtitle"])
     cells = cast(list[dict[str, object]], svg.data["cells"])
     assert len(cells) == 2
+
+
+def test_render_svg_uses_ascii_only_text() -> None:
+    board = FakeBoard(
+        width=2,
+        height=1,
+        mine_count=1,
+        cells=[FakeCell(state="flagged"), FakeCell(has_mine=True, state="hidden")],
+    )
+
+    svg = render_board_svg(
+        board,
+        context=RenderContext(
+            difficulty="easy",
+            status="lost",
+            moves=2,
+            last_action="踩雷 b1",
+            exploded_cell=(1, 0),
+        ),
+    )
+
+    visible_text = " ".join(
+        [
+            str(svg.data["title"]),
+            str(svg.data["subtitle"]),
+            " ".join(
+                str(cell["text"])
+                for cell in cast(list[dict[str, object]], svg.data["cells"])
+            ),
+        ]
+    )
+
+    assert visible_text.isascii()
+    assert "lost: B1" in visible_text
+    assert "last: mine b1" in visible_text
 
 
 def test_render_help_mentions_empty_ms_usage() -> None:
