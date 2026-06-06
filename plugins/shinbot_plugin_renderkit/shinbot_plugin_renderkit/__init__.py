@@ -24,7 +24,7 @@ from .api import (
     render_template_to_bytes,
     render_template_to_file,
 )
-from .backends import PlaywrightRenderBackend
+from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend
 from .models import ImageFormat, RenderOptions, RenderResult, SvgRenderOptions
 from .template import render_template_text
 
@@ -60,6 +60,7 @@ def setup(plg: Plugin) -> None:
             max_concurrency=config.max_concurrency,
         )
     )
+    configure_default_svg_backend(CairoSvgRenderBackend(max_concurrency=config.max_concurrency))
     if not config.tool_enabled:
         plg.logger.info("RenderKit plugin loaded without tool registration")
         return

@@ -314,15 +314,27 @@ def test_cairosvg_backend_wraps_svg_fragments() -> None:
         '<?xml version="1.0"?><rect width="10" height="10" />',
         options,
     )
+    xml_multi_fragment = backend._prepare_svg_markup(
+        '<?xml version="1.0"?><rect width="10" height="10" /><circle r="5" />',
+        options,
+    )
+    doctype_fragment = backend._prepare_svg_markup(
+        '<!DOCTYPE svg [<!ENTITY label "x">]><text>safe</text>',
+        options,
+    )
 
     assert wrapped.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
     assert 'viewBox="0 0 320 180"' in wrapped
-    assert '<rect width="10" height="10" />' in wrapped
+    assert "<rect width='10' height='10' />" in wrapped
     assert unchanged == "<svg viewBox='0 0 10 10'></svg>"
     assert xml_declared == '<?xml version="1.0" encoding="UTF-8"?><svg viewBox="0 0 10 10"></svg>'
     assert long_prefixed == f"<!-- {'x' * 300} --><svg viewBox='0 0 10 10'></svg>"
     assert '<?xml version="1.0"?>' not in xml_fragment
     assert '<rect width="10" height="10" />' in xml_fragment
+    assert '<?xml version="1.0"?>' not in xml_multi_fragment
+    assert '<rect width="10" height="10" /><circle r="5" />' in xml_multi_fragment
+    assert "<!DOCTYPE" not in doctype_fragment
+    assert "<text>safe</text>" in doctype_fragment
 
 
 @pytest.mark.asyncio
@@ -338,3 +350,31 @@ async def test_cairosvg_backend_rejects_non_bytes_result(monkeypatch: pytest.Mon
     backend = CairoSvgRenderBackend()
     with pytest.raises(RuntimeError, match="image bytes"):
         await backend.render_svg_to_bytes("<svg />", SvgRenderOptions())
+
+
+@pytest.mark.asyncio
+async def test_cairosvg_backend_limits_concurrent_renders(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = types.ModuleType("cairosvg")
+    active = 0
+    max_active = 0
+
+    def svg2png(**_kwargs: Any) -> bytes:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        import time
+
+        time.sleep(0.02)
+        active -= 1
+        return b"svg"
+
+    module.__dict__["svg2png"] = svg2png
+    monkeypatch.setitem(sys.modules, "cairosvg", module)
+
+    backend = CairoSvgRenderBackend(max_concurrency=1)
+    await asyncio.gather(
+        backend.render_svg_to_bytes("<svg />", SvgRenderOptions()),
+        backend.render_svg_to_bytes("<svg />", SvgRenderOptions()),
+    )
+
+    assert max_active == 1

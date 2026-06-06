@@ -6,7 +6,6 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from typing import Any
-from xml.etree import ElementTree
 
 from .models import RenderOptions, SvgRenderOptions
 
@@ -209,6 +208,16 @@ class PlaywrightRenderBackend:
 class CairoSvgRenderBackend:
     """Render SVG through CairoSVG in a worker thread."""
 
+    def __init__(self, *, max_concurrency: int = 2) -> None:
+        """Create a CairoSVG backend.
+
+        Args:
+            max_concurrency: Maximum concurrent SVG raster operations.
+        """
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be positive.")
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+
     async def render_svg_to_bytes(self, svg: str, options: SvgRenderOptions) -> bytes:
         """Render SVG markup to PNG bytes."""
         options.validate()
@@ -234,17 +243,18 @@ class CairoSvgRenderBackend:
                 raise RuntimeError("CairoSVG did not return image bytes.")
             return result
 
-        return await asyncio.wait_for(
-            asyncio.to_thread(render),
-            timeout=options.timeout_ms / 1000,
-        )
+        async with self._semaphore:
+            return await asyncio.wait_for(
+                asyncio.to_thread(render),
+                timeout=options.timeout_ms / 1000,
+            )
 
     def _prepare_svg_markup(self, svg: str, options: SvgRenderOptions) -> str:
         stripped = svg.strip()
-        root = self._parse_xml_root(stripped)
-        if root is not None and self._is_svg_root(root):
+        _, first_element = self._split_svg_preamble(stripped)
+        if self._element_name(first_element) == "svg":
             return stripped
-        content = ElementTree.tostring(root, encoding="unicode") if root is not None else stripped
+        content = self._strip_document_preamble(stripped)
         return (
             f'<svg xmlns="http://www.w3.org/2000/svg" '
             f'width="{options.width}" height="{options.height}" '
@@ -252,12 +262,90 @@ class CairoSvgRenderBackend:
             f"{content}</svg>"
         )
 
-    def _parse_xml_root(self, svg: str) -> ElementTree.Element[str] | None:
-        try:
-            return ElementTree.fromstring(svg)
-        except ElementTree.ParseError:
-            return None
+    def _strip_document_preamble(self, svg: str) -> str:
+        preamble, content = self._split_svg_preamble(svg)
+        stripped_preamble = self._strip_xml_document_declarations(preamble)
+        return f"{stripped_preamble}{content}".strip()
 
-    def _is_svg_root(self, root: ElementTree.Element[str]) -> bool:
-        _, _, local_name = root.tag.rpartition("}")
-        return (local_name or root.tag).lower() == "svg"
+    def _split_svg_preamble(self, svg: str) -> tuple[str, str]:
+        index = 0
+        while index < len(svg):
+            next_index = self._skip_preamble_item(svg, index)
+            if next_index == index:
+                break
+            index = next_index
+        return svg[:index], svg[index:].lstrip()
+
+    def _skip_preamble_item(self, svg: str, index: int) -> int:
+        index = self._skip_whitespace(svg, index)
+        lower = svg[index:].lower()
+        if lower.startswith("<?xml"):
+            return self._skip_until(svg, index, "?>")
+        if lower.startswith("<!--"):
+            return self._skip_until(svg, index, "-->")
+        if lower.startswith("<?"):
+            return self._skip_until(svg, index, "?>")
+        if lower.startswith("<!doctype"):
+            return self._skip_doctype(svg, index)
+        return index
+
+    def _strip_xml_document_declarations(self, preamble: str) -> str:
+        index = 0
+        kept: list[str] = []
+        while index < len(preamble):
+            whitespace_end = self._skip_whitespace(preamble, index)
+            kept.append(preamble[index:whitespace_end])
+            index = whitespace_end
+            lower = preamble[index:].lower()
+            if lower.startswith("<?xml"):
+                index = self._skip_until(preamble, index, "?>")
+                continue
+            if lower.startswith("<!doctype"):
+                index = self._skip_doctype(preamble, index)
+                continue
+            next_index = self._skip_preamble_item(preamble, index)
+            if next_index == index:
+                kept.append(preamble[index:])
+                break
+            kept.append(preamble[index:next_index])
+            index = next_index
+        return "".join(kept)
+
+    def _element_name(self, markup: str) -> str | None:
+        stripped = markup.lstrip()
+        if not stripped.startswith("<") or stripped.startswith(("</", "<!", "<?")):
+            return None
+        index = 1
+        while index < len(stripped) and stripped[index] not in " \t\r\n/>":
+            index += 1
+        name = stripped[1:index].lower()
+        return name.rsplit(":", 1)[-1] if name else None
+
+    def _skip_whitespace(self, text: str, index: int) -> int:
+        while index < len(text) and text[index].isspace():
+            index += 1
+        return index
+
+    def _skip_until(self, text: str, index: int, token: str) -> int:
+        end = text.find(token, index + len(token))
+        return len(text) if end < 0 else end + len(token)
+
+    def _skip_doctype(self, text: str, index: int) -> int:
+        quote: str | None = None
+        bracket_depth = 0
+        cursor = index + len("<!doctype")
+        while cursor < len(text):
+            char = text[cursor]
+            if quote is not None:
+                if char == quote:
+                    quote = None
+            elif char in {'"', "'"}:
+                quote = char
+            elif char == "[":
+                bracket_depth += 1
+            elif char == "]" and bracket_depth > 0:
+                bracket_depth -= 1
+            elif char == ">" and bracket_depth == 0:
+                return cursor + 1
+            cursor += 1
+        return len(text)
