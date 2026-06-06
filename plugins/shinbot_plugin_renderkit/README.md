@@ -66,10 +66,12 @@ result = await render_typst_template_to_file(
 capabilities = probe_renderkit_capabilities()
 ```
 
-The default HTML backend uses Playwright/Chromium and is loaded lazily. The
-default SVG backend uses CairoSVG and is also loaded lazily. Tests and callers
-can inject backend objects for deterministic rendering. Typst rendering uses the
-standard `typst` CLI and writes PNG output.
+The default HTML backend uses Playwright/Chromium and is loaded lazily. Browser
+dependencies remain optional. The default SVG backend uses CairoSVG, which is a
+normal RenderKit dependency so plugins such as Minesweeper can render image
+boards after RenderKit is installed. Tests and callers can inject backend
+objects for deterministic rendering. Typst rendering uses the standard `typst`
+CLI and writes PNG output.
 
 `probe_renderkit_capabilities()` performs a shallow availability check for the
 HTML, SVG, and Typst backends without starting Chromium or compiling a document.

@@ -1,7 +1,7 @@
 {
   "id": "shinbot_plugin_renderkit",
   "name": "RenderKit",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "ShinBot Contributors",
   "description": "General-purpose HTML/CSS, SVG, and Typst template rendering utilities for ShinBot plugins.",
   "entry": "shinbot_plugin_renderkit/__init__.py",

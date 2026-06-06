@@ -44,9 +44,11 @@ Typst rendering shells out to the standard Typst CLI through an async subprocess
 The default HTML backend is Playwright/Chromium. It is imported lazily so
 installing RenderKit without browser dependencies is still possible.
 
-The default SVG backend is CairoSVG. It is also imported lazily and is available
-through the optional `svg` extra. Callers may inject custom backends in tests or
-constrained deployments.
+The default SVG backend is CairoSVG. It is a normal RenderKit dependency because
+plugin-to-plugin image rendering, such as Minesweeper boards, relies on SVG
+rasterization without requiring browser dependencies. It is still imported
+lazily, and callers may inject custom backends in tests or constrained
+deployments.
 
 The default Typst backend is the `typst` CLI. It is configured lazily and callers
 may override the executable path through plugin config.
