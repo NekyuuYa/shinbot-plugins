@@ -24,6 +24,20 @@ On loss, mines can be revealed by config. The latest board replies can be kept
 while older board messages are recalled best-effort when the adapter supports
 message deletion.
 
+## Themes
+
+Image boards support multiple color themes (`light`, `dark`, `classic`),
+selected by the `theme` config field. A theme is a pure-data `Theme` object in
+`renderer.py` describing chrome colors (background, title, meta, coordinates)
+and per-state cell colors (hidden, flagged, exploded, mine, empty, revealed) plus
+a 1-8 number palette. `render_board_svg` injects these into the SVG template, so
+adding a theme is data-only. Themes affect image rendering only; the plain-text
+board is unchanged.
+
+Hidden cells in image mode display their coordinate label (e.g. `a1`, `b3`)
+instead of the hidden symbol, making it easy to identify cells to operate on.
+This is controlled by the `show_cell_coords` flag passed to `_render_cell`.
+
 ## Controls
 
 The root command is `/minesweeper`, with `/ms` as the short alias. There is no

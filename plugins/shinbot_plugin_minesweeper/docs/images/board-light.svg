@@ -1,0 +1,225 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="394" height="352" viewBox="0 0 394 352">
+  <style>
+    text {
+      font-family: Inter, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif;
+    }
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      fill: #172033;
+    }
+    .meta {
+      font-size: 13px;
+      fill: #536172;
+    }
+    .coord {
+      font-size: 12px;
+      fill: #667085;
+      font-weight: 600;
+    }
+    .cellText {
+      font-size: 15px;
+      font-weight: 700;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+  </style>
+  <rect width="100%" height="100%" rx="0" fill="#f7f8fb"/>
+  <text x="18" y="32" class="title">扫雷 easy 9x6 / 1 雷 / 步数 3</text>
+  <text x="18" y="56" class="meta">标记 4/1 | 本次：打开 a1</text>
+  
+  <text x="71.0" y="101" class="coord" text-anchor="middle">A</text>
+  
+  <text x="107.0" y="101" class="coord" text-anchor="middle">B</text>
+  
+  <text x="143.0" y="101" class="coord" text-anchor="middle">C</text>
+  
+  <text x="179.0" y="101" class="coord" text-anchor="middle">D</text>
+  
+  <text x="215.0" y="101" class="coord" text-anchor="middle">E</text>
+  
+  <text x="251.0" y="101" class="coord" text-anchor="middle">F</text>
+  
+  <text x="287.0" y="101" class="coord" text-anchor="middle">G</text>
+  
+  <text x="323.0" y="101" class="coord" text-anchor="middle">H</text>
+  
+  <text x="359.0" y="101" class="coord" text-anchor="middle">I</text>
+  
+  
+  <text x="36" y="133.0" class="coord" text-anchor="middle" dominant-baseline="central">1</text>
+  
+  <text x="36" y="169.0" class="coord" text-anchor="middle" dominant-baseline="central">2</text>
+  
+  <text x="36" y="205.0" class="coord" text-anchor="middle" dominant-baseline="central">3</text>
+  
+  <text x="36" y="241.0" class="coord" text-anchor="middle" dominant-baseline="central">4</text>
+  
+  <text x="36" y="277.0" class="coord" text-anchor="middle" dominant-baseline="central">5</text>
+  
+  <text x="36" y="313.0" class="coord" text-anchor="middle" dominant-baseline="central">6</text>
+  
+  
+  <rect x="54" y="116" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="71.0" y="133.0" class="cellText" fill="#93c5fd">a1</text>
+  
+  <rect x="90" y="116" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="107.0" y="133.0" class="cellText" fill="#93c5fd">b1</text>
+  
+  <rect x="126" y="116" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="143.0" y="133.0" class="cellText" fill="#93c5fd">c1</text>
+  
+  <rect x="162" y="116" width="34" height="34" rx="4" fill="#f59e0b" stroke="#b45309"/>
+  <text x="179.0" y="133.0" class="cellText" fill="#ffffff">⚑</text>
+  
+  <rect x="198" y="116" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="215.0" y="133.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="234" y="116" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="251.0" y="133.0" class="cellText" fill="#16a34a">2</text>
+  
+  <rect x="270" y="116" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="287.0" y="133.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="306" y="116" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="323.0" y="133.0" class="cellText" fill="#93c5fd">h1</text>
+  
+  <rect x="342" y="116" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="359.0" y="133.0" class="cellText" fill="#93c5fd">i1</text>
+  
+  <rect x="54" y="152" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="71.0" y="169.0" class="cellText" fill="#93c5fd">a2</text>
+  
+  <rect x="90" y="152" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="107.0" y="169.0" class="cellText" fill="#93c5fd">b2</text>
+  
+  <rect x="126" y="152" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="143.0" y="169.0" class="cellText" fill="#93c5fd">c2</text>
+  
+  <rect x="162" y="152" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="179.0" y="169.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="198" y="152" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="215.0" y="169.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="234" y="152" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="251.0" y="169.0" class="cellText" fill="#94a3b8">·</text>
+  
+  <rect x="270" y="152" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="287.0" y="169.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="306" y="152" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="323.0" y="169.0" class="cellText" fill="#93c5fd">h2</text>
+  
+  <rect x="342" y="152" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="359.0" y="169.0" class="cellText" fill="#93c5fd">i2</text>
+  
+  <rect x="54" y="188" width="34" height="34" rx="4" fill="#f59e0b" stroke="#b45309"/>
+  <text x="71.0" y="205.0" class="cellText" fill="#ffffff">⚑</text>
+  
+  <rect x="90" y="188" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="107.0" y="205.0" class="cellText" fill="#93c5fd">b3</text>
+  
+  <rect x="126" y="188" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="143.0" y="205.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="162" y="188" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="179.0" y="205.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="198" y="188" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="215.0" y="205.0" class="cellText" fill="#94a3b8">·</text>
+  
+  <rect x="234" y="188" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="251.0" y="205.0" class="cellText" fill="#94a3b8">·</text>
+  
+  <rect x="270" y="188" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="287.0" y="205.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="306" y="188" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="323.0" y="205.0" class="cellText" fill="#93c5fd">h3</text>
+  
+  <rect x="342" y="188" width="34" height="34" rx="4" fill="#f59e0b" stroke="#b45309"/>
+  <text x="359.0" y="205.0" class="cellText" fill="#ffffff">⚑</text>
+  
+  <rect x="54" y="224" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="71.0" y="241.0" class="cellText" fill="#93c5fd">a4</text>
+  
+  <rect x="90" y="224" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="107.0" y="241.0" class="cellText" fill="#93c5fd">b4</text>
+  
+  <rect x="126" y="224" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="143.0" y="241.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="162" y="224" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="179.0" y="241.0" class="cellText" fill="#94a3b8">·</text>
+  
+  <rect x="198" y="224" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="215.0" y="241.0" class="cellText" fill="#94a3b8">·</text>
+  
+  <rect x="234" y="224" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="251.0" y="241.0" class="cellText" fill="#94a3b8">·</text>
+  
+  <rect x="270" y="224" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="287.0" y="241.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="306" y="224" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="323.0" y="241.0" class="cellText" fill="#93c5fd">h4</text>
+  
+  <rect x="342" y="224" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="359.0" y="241.0" class="cellText" fill="#93c5fd">i4</text>
+  
+  <rect x="54" y="260" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="71.0" y="277.0" class="cellText" fill="#93c5fd">a5</text>
+  
+  <rect x="90" y="260" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="107.0" y="277.0" class="cellText" fill="#93c5fd">b5</text>
+  
+  <rect x="126" y="260" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="143.0" y="277.0" class="cellText" fill="#16a34a">2</text>
+  
+  <rect x="162" y="260" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="179.0" y="277.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="198" y="260" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="215.0" y="277.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="234" y="260" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="251.0" y="277.0" class="cellText" fill="#2563eb">1</text>
+  
+  <rect x="270" y="260" width="34" height="34" rx="4" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="287.0" y="277.0" class="cellText" fill="#16a34a">2</text>
+  
+  <rect x="306" y="260" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="323.0" y="277.0" class="cellText" fill="#93c5fd">h5</text>
+  
+  <rect x="342" y="260" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="359.0" y="277.0" class="cellText" fill="#93c5fd">i5</text>
+  
+  <rect x="54" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="71.0" y="313.0" class="cellText" fill="#93c5fd">a6</text>
+  
+  <rect x="90" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="107.0" y="313.0" class="cellText" fill="#93c5fd">b6</text>
+  
+  <rect x="126" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="143.0" y="313.0" class="cellText" fill="#93c5fd">c6</text>
+  
+  <rect x="162" y="296" width="34" height="34" rx="4" fill="#f59e0b" stroke="#b45309"/>
+  <text x="179.0" y="313.0" class="cellText" fill="#ffffff">⚑</text>
+  
+  <rect x="198" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="215.0" y="313.0" class="cellText" fill="#93c5fd">e6</text>
+  
+  <rect x="234" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="251.0" y="313.0" class="cellText" fill="#93c5fd">f6</text>
+  
+  <rect x="270" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="287.0" y="313.0" class="cellText" fill="#93c5fd">g6</text>
+  
+  <rect x="306" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="323.0" y="313.0" class="cellText" fill="#93c5fd">h6</text>
+  
+  <rect x="342" y="296" width="34" height="34" rx="4" fill="#334155" stroke="#1e293b"/>
+  <text x="359.0" y="313.0" class="cellText" fill="#93c5fd">i6</text>
+  
+</svg>
