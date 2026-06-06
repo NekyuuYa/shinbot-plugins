@@ -66,7 +66,7 @@ class MinesweeperPluginConfig(BaseModel):
     reveal_mines_on_loss: bool = True
     show_coordinates: bool = True
     ascii_symbols: bool = False
-    render_mode: Literal["text", "auto", "image"] = "text"
+    render_mode: Literal["text", "auto", "image"] = "auto"
     image_scale: float = Field(default=1.0, gt=0, le=4)
     recall_old_boards: bool = True
     keep_recent_board_messages: int = Field(default=2, ge=1, le=5)
