@@ -224,6 +224,28 @@ def test_render_svg_defaults_to_light_theme() -> None:
     assert cells[0]["stroke_width"] == 0.75
 
 
+def test_render_svg_expands_width_for_header_text() -> None:
+    board = FakeBoard(
+        width=1,
+        height=1,
+        mine_count=0,
+        cells=[FakeCell(state="hidden")],
+    )
+
+    svg = render_board_svg(
+        board,
+        context=RenderContext(
+            difficulty="custom-super-long-name",
+            moves=123,
+            last_action="打开 a1 b1 c1 d1 e1 f1",
+        ),
+    )
+
+    assert svg.width > 500
+    assert str(svg.data["title"]).isascii()
+    assert str(svg.data["subtitle"]).isascii()
+
+
 def test_render_svg_applies_dark_theme() -> None:
     board = FakeBoard(
         width=2,

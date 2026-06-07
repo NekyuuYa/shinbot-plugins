@@ -1,6 +1,6 @@
 [project]
 name = "shinbot-plugin-minesweeper"
-version = "0.2.2"
+version = "0.2.3"
 description = "Session-scoped chat minesweeper plugin for ShinBot."
 readme = "README.md"
 requires-python = ">=3.12"

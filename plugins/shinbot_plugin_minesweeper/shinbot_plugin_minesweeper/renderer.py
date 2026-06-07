@@ -300,12 +300,11 @@ def render_board_svg(
     top = 116 if active_options.show_coordinates else 86
     grid_width = board.width * cell_size + max(0, board.width - 1) * gap
     grid_height = board.height * cell_size + max(0, board.height - 1) * gap
-    width = left + grid_width + 18
-    height = top + grid_height + 22
     flag_count = sum(1 for cell in board.cells if _state_value(cell) == "flagged")
+    difficulty = _svg_ascii_text(active_context.difficulty) or "custom"
 
     title = (
-        f"Minesweeper {active_context.difficulty} {board.width}x{board.height} / "
+        f"Minesweeper {difficulty} {board.width}x{board.height} / "
         f"mines {board.mine_count} / moves {active_context.moves}"
     )
     subtitle_parts = [f"flags {flag_count}/{board.mine_count}"]
@@ -315,6 +314,8 @@ def render_board_svg(
     if active_context.last_action:
         subtitle_parts.append(f"last: {_svg_last_action(active_context.last_action)}")
     subtitle = " | ".join(subtitle_parts)
+    width = max(left + grid_width + 18, _svg_header_min_width(title, subtitle))
+    height = top + grid_height + 22
     columns: list[dict[str, object]] = []
     rows: list[dict[str, object]] = []
 
@@ -507,6 +508,11 @@ def _svg_status_line(context: RenderContext) -> str | None:
     return None
 
 
+def _svg_ascii_text(value: str) -> str:
+    text = "".join(char if 32 <= ord(char) < 127 else " " for char in value)
+    return " ".join(text.split())
+
+
 def _svg_last_action(value: str) -> str:
     replacements = {
         "打开 ": "open ",
@@ -518,7 +524,37 @@ def _svg_last_action(value: str) -> str:
     result = value
     for source, target in replacements.items():
         result = result.replace(source, target)
-    return "".join(char if ord(char) < 128 else " " for char in result).strip()
+    return _svg_ascii_text(result)
+
+
+def _svg_header_min_width(title: str, subtitle: str) -> int:
+    horizontal_padding = 36
+    return int(
+        max(
+            _svg_estimated_text_width(title, font_size=18, bold=True),
+            _svg_estimated_text_width(subtitle, font_size=13),
+        )
+        + horizontal_padding
+        + 0.999
+    )
+
+
+def _svg_estimated_text_width(value: str, *, font_size: int, bold: bool = False) -> float:
+    weight_factor = 1.05 if bold else 1.0
+    total = 0.0
+    for char in value:
+        if char == " ":
+            factor = 0.35
+        elif char in "ilI.,:|!/'":
+            factor = 0.34
+        elif char in "MW@#%&":
+            factor = 0.82
+        elif char.isupper() or char.isdigit():
+            factor = 0.62
+        else:
+            factor = 0.56
+        total += font_size * factor * weight_factor
+    return total
 
 
 def _svg_cell_colors(
