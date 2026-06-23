@@ -1,0 +1,1 @@
+"""AstrBot core.message stub."""
