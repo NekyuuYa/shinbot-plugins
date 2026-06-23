@@ -26,8 +26,10 @@ Partially supported (degraded):
 from __future__ import annotations
 
 import inspect
+import json
 import logging
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from shinbot.core.dispatch.message_context import MessageContext
@@ -65,6 +67,8 @@ async def setup(plg: Plugin) -> None:
         logger.info("astrbot compat: no compat plugins found in %s", compat_dir)
         return
 
+    compat_info: dict[str, dict] = {}
+
     for plugin_subdir in subdirs:
         loaded = load_compat_plugin(plugin_subdir)
         if loaded is None:
@@ -86,7 +90,43 @@ async def setup(plg: Plugin) -> None:
         _register_handlers(plg, loaded)
         _loaded_plugins.append(loaded)
 
+        # Collect info for virtual plugin registration
+        plugin_id = plugin_subdir.name
+        compat_info[plugin_id] = {
+            "plugin_dir": plugin_subdir,
+            "config": config,
+            "metadata": _load_astrbot_metadata(plugin_subdir),
+        }
+
     logger.info("astrbot compat: registered %d plugin(s)", len(_loaded_plugins))
+
+    # Register virtual plugins in the WebUI
+    if compat_info:
+        from .shim.virtual_plugin import register_virtual_plugins
+
+        register_virtual_plugins(plg, compat_info)
+
+
+def _load_astrbot_metadata(plugin_dir: Path) -> dict[str, Any]:
+    """Load AstrBot plugin metadata from metadata.yaml."""
+    import yaml
+
+    meta_path = plugin_dir / "metadata.yaml"
+    if not meta_path.exists():
+        # Try metadata.json as fallback
+        json_path = plugin_dir / "metadata.json"
+        if json_path.exists():
+            try:
+                return json.loads(json_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {}
+
+    try:
+        return yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        logger.debug("astrbot compat: failed to load metadata from %s", meta_path)
+        return {}
 
 
 async def teardown() -> None:
