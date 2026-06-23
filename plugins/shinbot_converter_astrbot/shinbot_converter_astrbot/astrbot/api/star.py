@@ -53,7 +53,14 @@ class Star:
         return default
 
     # HTML rendering — injected by the bridge loader
-    async def html_render(self, *args: Any, **kwargs: Any) -> str:
+    async def html_render(
+        self,
+        tmpl: str,
+        data: dict,
+        return_url: bool = True,
+        options: dict | None = None,
+    ) -> str | bytes:
+        """Render HTML to image. Injected with real implementation by the bridge."""
         raise NotImplementedError(
             "html_render not available — install shinbot_plugin_renderkit"
         )
