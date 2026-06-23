@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import base64
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -283,8 +284,24 @@ class ShimContext:
 
     # ── HTML rendering ────────────────────────────────────────────────
 
-    async def html_render(self, html: str, **kwargs) -> str:
-        """Render HTML to base64 image using renderkit (optional dependency)."""
+    async def html_render(
+        self,
+        tmpl: str,
+        data: dict,
+        return_url: bool = True,
+        options: dict | None = None,
+    ) -> str | bytes:
+        """Render HTML to image, compatible with AstrBot's Star.html_render().
+
+        Args:
+            tmpl:       Pre-rendered HTML content (or Jinja2 template string).
+            data:       Template data dict (unused when HTML is pre-rendered).
+            return_url: If True, return a file path; if False, return raw bytes.
+            options:    AstrBot-style rendering options dict.
+
+        Returns:
+            File path string (return_url=True) or image bytes (return_url=False).
+        """
         try:
             from shinbot_plugin_renderkit.api import render_html_to_bytes
         except ImportError as err:
@@ -293,8 +310,19 @@ class ShimContext:
                 "Install it or set output_format to 'text'."
             ) from err
 
-        image_bytes = await render_html_to_bytes(html)
-        return f"base64://{base64.b64encode(image_bytes).decode()}"
+        render_opts = _translate_t2i_options(options)
+        image_bytes = await render_html_to_bytes(tmpl, options=render_opts)
+
+        if return_url:
+            suffix = ".png" if render_opts.image_format == "png" else ".jpg"
+            fd, path = tempfile.mkstemp(suffix=suffix, prefix="astrbot_t2i_")
+            try:
+                os.write(fd, image_bytes)
+            finally:
+                os.close(fd)
+            return path
+
+        return image_bytes
 
     # ── Proactive messaging ───────────────────────────────────────────
 
@@ -331,6 +359,45 @@ class _ShimUsage:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+# AstrBot device_scale_factor_level → RenderKit device_scale_factor float
+_DEVICE_SCALE_MAP: dict[str, float] = {
+    "normal": 1.0,
+    "high": 1.3,
+    "ultra": 1.8,
+}
+
+
+def _translate_t2i_options(options: dict[str, Any]) -> Any:
+    """Translate AstrBot T2I options dict to a RenderKit RenderOptions object.
+
+    AstrBot options keys:
+        type ("png"/"jpeg"), quality (int), full_page (bool),
+        device_scale_factor_level ("normal"/"high"/"ultra"), timeout (ms)
+
+    RenderKit RenderOptions fields:
+        image_format, full_page, device_scale_factor, timeout_ms, width, height
+    """
+    from shinbot_plugin_renderkit.models import RenderOptions
+
+    image_format = options.get("type", "png")
+    if image_format not in ("png", "jpeg"):
+        image_format = "png"
+
+    scale_level = options.get("device_scale_factor_level", "normal")
+    device_scale_factor = _DEVICE_SCALE_MAP.get(str(scale_level).lower(), 1.0)
+
+    full_page = options.get("full_page", True)
+    timeout_ms = options.get("timeout", 30_000)
+
+    kwargs: dict[str, Any] = {
+        "image_format": image_format,
+        "device_scale_factor": device_scale_factor,
+        "full_page": full_page,
+        "timeout_ms": timeout_ms,
+    }
+
+    return RenderOptions(**kwargs)
 
 
 def _extract_components(chain: Any) -> list:
