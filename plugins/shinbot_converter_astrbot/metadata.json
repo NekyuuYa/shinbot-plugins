@@ -4,7 +4,7 @@
     "version": "2.0.0",
     "author": "ShinBot Team",
     "description": "Bridge layer for running AstrBot-compatible plugins inside ShinBot.",
-    "entry": "__init__.py",
+    "entry": "shinbot_converter_astrbot/__init__.py",
     "role": "logic",
     "default_enabled": true
 }
