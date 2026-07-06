@@ -5,4 +5,5 @@ description = "Bridge layer for running AstrBot-compatible plugins inside ShinBo
 requires-python = ">=3.12"
 dependencies = [
     "apscheduler>=3.10,<4",
+    "PyYAML>=6.0",
 ]

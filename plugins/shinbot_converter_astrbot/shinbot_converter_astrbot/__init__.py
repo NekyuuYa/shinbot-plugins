@@ -47,10 +47,14 @@ async def setup(plg: Plugin) -> None:
     inject_stub()
 
     # Now we can import from astrbot
-    from astrbot.core.utils.astrbot_path import _set_data_dir
     from astrbot.api.star import StarTools
+    from astrbot.core.utils.astrbot_path import _set_data_dir
 
-    from .installer import install_astrbot_plugin, uninstall_astrbot_plugin, validate_astrbot_metadata
+    from .installer import (
+        install_astrbot_plugin,
+        uninstall_astrbot_plugin,
+        validate_astrbot_metadata,
+    )
     from .shim.config import ShimAstrBotConfig
     from .shim.context import ShimContext
     from .shim.kv import ShimKVStore
@@ -60,11 +64,13 @@ async def setup(plg: Plugin) -> None:
     StarTools._data_dir = plg.data_dir
 
     # Register AstrBot plugin installer
+    compat_dir = plg.data_dir / "compat_plugins"
     plg.register_plugin_installer(
         "astrbot",
         install_fn=install_astrbot_plugin,
         uninstall_fn=uninstall_astrbot_plugin,
         validate_fn=validate_astrbot_metadata,
+        target_dir=compat_dir,
     )
 
     # Register AstrBot plugin marketplace source
@@ -77,7 +83,6 @@ async def setup(plg: Plugin) -> None:
         installer_type="astrbot",
     )
 
-    compat_dir = plg.data_dir / "compat_plugins"
     compat_dir.mkdir(parents=True, exist_ok=True)
 
     # Shared KV store (all compat plugins share one file)
