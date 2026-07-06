@@ -50,6 +50,7 @@ async def setup(plg: Plugin) -> None:
     from astrbot.core.utils.astrbot_path import _set_data_dir
     from astrbot.api.star import StarTools
 
+    from .installer import install_astrbot_plugin, uninstall_astrbot_plugin, validate_astrbot_metadata
     from .shim.config import ShimAstrBotConfig
     from .shim.context import ShimContext
     from .shim.kv import ShimKVStore
@@ -57,6 +58,24 @@ async def setup(plg: Plugin) -> None:
     # Configure path stubs
     _set_data_dir(plg.data_dir.parent)
     StarTools._data_dir = plg.data_dir
+
+    # Register AstrBot plugin installer
+    plg.register_plugin_installer(
+        "astrbot",
+        install_fn=install_astrbot_plugin,
+        uninstall_fn=uninstall_astrbot_plugin,
+        validate_fn=validate_astrbot_metadata,
+    )
+
+    # Register AstrBot plugin marketplace source
+    plg.register_marketplace_source(
+        source_id="astrbot-official",
+        name="AstrBot Official Plugins",
+        repository_url="https://github.com/Soulter/astrbot-plugins",
+        ref="main",
+        plugin_root=".",
+        installer_type="astrbot",
+    )
 
     compat_dir = plg.data_dir / "compat_plugins"
     compat_dir.mkdir(parents=True, exist_ok=True)
