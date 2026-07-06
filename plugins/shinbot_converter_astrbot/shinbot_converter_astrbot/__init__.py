@@ -77,9 +77,10 @@ async def setup(plg: Plugin) -> None:
     plg.register_marketplace_source(
         source_id="astrbot-official",
         name="AstrBot Official Plugins",
-        repository_url="https://github.com/Soulter/astrbot-plugins",
+        source_type="github_index",
+        repository_url="https://github.com/AstrBotDevs/AstrBot_Plugins_Collection",
         ref="main",
-        plugin_root=".",
+        plugin_root="plugins.json",
         installer_type="astrbot",
     )
 
