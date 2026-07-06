@@ -41,19 +41,21 @@ _loaded_plugins: list = []
 
 
 async def setup(plg: Plugin) -> None:
-    from astrbot.core.utils.astrbot_path import _set_data_dir
-
     from .loader import inject_stub, load_compat_plugin
+
+    # First inject the stub to make astrbot package available
+    inject_stub()
+
+    # Now we can import from astrbot
+    from astrbot.core.utils.astrbot_path import _set_data_dir
+    from astrbot.api.star import StarTools
+
     from .shim.config import ShimAstrBotConfig
     from .shim.context import ShimContext
     from .shim.kv import ShimKVStore
 
     # Configure path stubs
-    inject_stub()
     _set_data_dir(plg.data_dir.parent)
-
-    from astrbot.api.star import StarTools
-
     StarTools._data_dir = plg.data_dir
 
     compat_dir = plg.data_dir / "compat_plugins"
