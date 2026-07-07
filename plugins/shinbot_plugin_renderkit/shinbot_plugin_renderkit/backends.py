@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from .models import RenderOptions, SvgRenderOptions, TypstRenderOptions
+from .models import GifRenderOptions, RenderOptions, SvgRenderOptions, TypstRenderOptions
 
 logger = logging.getLogger(__name__)
 
@@ -471,3 +471,107 @@ class TypstCliRenderBackend:
             command.extend(["--input", f"{key}={value}"])
         command.extend(["-", "-"])
         return command
+
+
+class FfmpegGifBackend:
+    """Compose animated GIFs from image frame sequences using ffmpeg.
+
+    Uses the palettegen + paletteuse filter chain for high-quality
+    256-color output without visible banding.
+    """
+
+    def __init__(
+        self,
+        *,
+        executable_path: str = "ffmpeg",
+        max_concurrency: int = 2,
+    ) -> None:
+        if max_concurrency <= 0:
+            raise ValueError("max_concurrency must be positive.")
+        self._executable_path = executable_path
+        self._semaphore = asyncio.Semaphore(max_concurrency)
+
+    @classmethod
+    def is_available(cls, *, executable_path: str = "ffmpeg") -> bool:
+        """Return whether the configured ffmpeg executable is visible."""
+        return _executable_available(executable_path)
+
+    async def render_frames_to_gif(
+        self,
+        frames: Sequence[bytes],
+        options: GifRenderOptions | None = None,
+    ) -> bytes:
+        """Compose an animated GIF from raw image *frames* (PNG/JPEG bytes).
+
+        Returns the GIF file as bytes.
+        """
+        from .models import GifRenderOptions as GifOpts
+
+        opts = options or GifOpts()
+        opts.validate()
+
+        async with self._semaphore:
+            return await asyncio.to_thread(self._render_sync, frames, opts)
+
+    def _render_sync(
+        self,
+        frames: Sequence[bytes],
+        options: GifRenderOptions,
+    ) -> bytes:
+        """Blocking composition — runs in a thread via ``asyncio.to_thread``."""
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+
+            # Write frames as numbered files
+            suffix = self._detect_suffix(frames[0]) if frames else ".png"
+            for i, raw in enumerate(frames):
+                (tmp / f"frame-{i:04d}{suffix}").write_bytes(raw)
+
+            palette = tmp / "palette.png"
+            output = tmp / "output.gif"
+
+            loop_flag = "0" if options.loop else "-1"
+
+            # Pass 1: generate optimal palette
+            subprocess.run(
+                [
+                    self._executable_path, "-y",
+                    "-framerate", str(options.fps),
+                    "-i", str(tmp / f"frame-%04d{suffix}"),
+                    "-vf", f"palettegen=stats_mode={options.palette_mode}",
+                    str(palette),
+                ],
+                capture_output=True,
+                check=True,
+                timeout=options.timeout_ms / 1000,
+            )
+
+            # Pass 2: compose GIF with palette
+            subprocess.run(
+                [
+                    self._executable_path, "-y",
+                    "-framerate", str(options.fps),
+                    "-i", str(tmp / f"frame-%04d{suffix}"),
+                    "-i", str(palette),
+                    "-lavfi", f"paletteuse=dither={options.dither}",
+                    "-loop", loop_flag,
+                    str(output),
+                ],
+                capture_output=True,
+                check=True,
+                timeout=options.timeout_ms / 1000,
+            )
+
+            return output.read_bytes()
+
+    @staticmethod
+    def _detect_suffix(data: bytes) -> str:
+        """Guess image file extension from magic bytes."""
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return ".png"
+        if data[:2] == b"\xff\xd8":
+            return ".jpg"
+        return ".png"

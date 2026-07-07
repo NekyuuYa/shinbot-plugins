@@ -60,6 +60,7 @@ class RenderKitCapabilities:
     html: bool
     svg: bool
     typst: bool
+    gif: bool = False
 
     def to_dict(self) -> dict[str, bool]:
         """Return a JSON-compatible representation."""
@@ -67,6 +68,7 @@ class RenderKitCapabilities:
             "html": self.html,
             "svg": self.svg,
             "typst": self.typst,
+            "gif": self.gif,
         }
 
 
@@ -193,6 +195,34 @@ class TypstRenderOptions:
     def mime_type(self) -> str:
         """Return the MIME type for this render format."""
         return "image/png"
+
+
+@dataclass(frozen=True, slots=True)
+class GifRenderOptions:
+    """Options for animated GIF composition from image frames via ffmpeg."""
+
+    fps: float = 2.0
+    loop: bool = True
+    palette_mode: str = "diff"
+    dither: str = "sierra2_4a"
+    timeout_ms: int = 60_000
+
+    def validate(self) -> None:
+        """Validate GIF render options."""
+        if self.fps <= 0:
+            raise ValueError("FPS must be positive.")
+        if self.timeout_ms <= 0:
+            raise ValueError("Timeout must be positive.")
+
+    @property
+    def suffix(self) -> str:
+        """Return the file suffix."""
+        return ".gif"
+
+    @property
+    def mime_type(self) -> str:
+        """Return the MIME type."""
+        return "image/gif"
 
 
 @dataclass(frozen=True, slots=True)

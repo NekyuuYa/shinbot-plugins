@@ -9,8 +9,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend, TypstCliRenderBackend
+from .backends import (
+    CairoSvgRenderBackend,
+    FfmpegGifBackend,
+    PlaywrightRenderBackend,
+    TypstCliRenderBackend,
+)
 from .models import (
+    GifRenderOptions,
     RenderBackend,
     RenderKitCapabilities,
     RenderOptions,
@@ -28,6 +34,8 @@ _DEFAULT_SVG_BACKEND: SvgRenderBackend | None = None
 _DEFAULT_SVG_BACKEND_LOCK = threading.RLock()
 _DEFAULT_TYPST_BACKEND: TypstRenderBackend | None = None
 _DEFAULT_TYPST_BACKEND_LOCK = threading.RLock()
+_DEFAULT_GIF_BACKEND: FfmpegGifBackend | None = None
+_DEFAULT_GIF_BACKEND_LOCK = threading.RLock()
 
 
 def probe_renderkit_capabilities(
@@ -45,6 +53,7 @@ def probe_renderkit_capabilities(
         html=PlaywrightRenderBackend.is_available(executable_path=chromium_executable_path),
         svg=CairoSvgRenderBackend.is_available(),
         typst=TypstCliRenderBackend.is_available(executable_path=typst_executable_path),
+        gif=FfmpegGifBackend.is_available(),
     )
 
 
@@ -137,6 +146,61 @@ async def close_default_typst_backend() -> None:
         with _DEFAULT_TYPST_BACKEND_LOCK:
             if _DEFAULT_TYPST_BACKEND is backend:
                 _DEFAULT_TYPST_BACKEND = None
+
+
+
+
+def configure_default_gif_backend(backend: FfmpegGifBackend | None) -> None:
+    """Set the process-local default GIF backend used when callers do not pass one."""
+    global _DEFAULT_GIF_BACKEND
+    with _DEFAULT_GIF_BACKEND_LOCK:
+        _DEFAULT_GIF_BACKEND = backend
+
+
+def get_default_gif_backend() -> FfmpegGifBackend:
+    """Return the lazily-created default GIF render backend."""
+    global _DEFAULT_GIF_BACKEND
+    with _DEFAULT_GIF_BACKEND_LOCK:
+        if _DEFAULT_GIF_BACKEND is None:
+            _DEFAULT_GIF_BACKEND = FfmpegGifBackend()
+        return _DEFAULT_GIF_BACKEND
+
+
+async def close_default_gif_backend() -> None:
+    """Close and clear the default GIF backend when it owns resources."""
+    global _DEFAULT_GIF_BACKEND
+    with _DEFAULT_GIF_BACKEND_LOCK:
+        backend = _DEFAULT_GIF_BACKEND
+    close = getattr(backend, "close", None)
+    try:
+        if close is not None:
+            await close()
+    finally:
+        with _DEFAULT_GIF_BACKEND_LOCK:
+            if _DEFAULT_GIF_BACKEND is backend:
+                _DEFAULT_GIF_BACKEND = None
+
+
+async def render_frames_to_gif(
+    frames: Sequence[bytes],
+    *,
+    options: GifRenderOptions | None = None,
+    backend: FfmpegGifBackend | None = None,
+) -> bytes:
+    """Compose an animated GIF from raw image *frames* using ffmpeg.
+
+    Uses palettegen + paletteuse for high-quality 256-color output.
+
+    Args:
+        frames: Raw PNG/JPEG image bytes, one per frame, in order.
+        options: GIF rendering options (fps, dither, etc.).
+        backend: Optional GIF backend override.
+    """
+    active_options = options or GifRenderOptions()
+    active_options.validate()
+    active_backend = backend or get_default_gif_backend()
+    return await active_backend.render_frames_to_gif(frames, options=active_options)
+
 
 
 async def render_html_to_bytes(

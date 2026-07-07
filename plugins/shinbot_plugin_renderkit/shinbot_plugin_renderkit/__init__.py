@@ -12,12 +12,15 @@ from pydantic import BaseModel, Field, ValidationError
 
 from .api import (
     close_default_backend,
+    close_default_gif_backend,
     close_default_svg_backend,
     close_default_typst_backend,
     configure_default_backend,
+    configure_default_gif_backend,
     configure_default_svg_backend,
     configure_default_typst_backend,
     probe_renderkit_capabilities,
+    render_frames_to_gif,
     render_html_to_bytes,
     render_html_to_file,
     render_svg_template_to_bytes,
@@ -31,8 +34,14 @@ from .api import (
     render_typst_to_bytes,
     render_typst_to_file,
 )
-from .backends import CairoSvgRenderBackend, PlaywrightRenderBackend, TypstCliRenderBackend
+from .backends import (
+    CairoSvgRenderBackend,
+    FfmpegGifBackend,
+    PlaywrightRenderBackend,
+    TypstCliRenderBackend,
+)
 from .models import (
+    GifRenderOptions,
     ImageFormat,
     RenderKitCapabilities,
     RenderOptions,
@@ -356,17 +365,22 @@ def _load_plugin_config(plugin_id: str) -> RenderKitPluginConfig:
 __all__ = [
     "RenderKitPluginConfig",
     "RenderKitCapabilities",
+    "FfmpegGifBackend",
+    "GifRenderOptions",
     "RenderOptions",
     "RenderResult",
     "SvgRenderOptions",
     "TypstRenderOptions",
     "close_default_backend",
+    "close_default_gif_backend",
     "close_default_svg_backend",
     "close_default_typst_backend",
     "configure_default_backend",
+    "configure_default_gif_backend",
     "configure_default_svg_backend",
     "configure_default_typst_backend",
     "probe_renderkit_capabilities",
+    "render_frames_to_gif",
     "render_html_to_bytes",
     "render_html_to_file",
     "render_svg_template_to_bytes",

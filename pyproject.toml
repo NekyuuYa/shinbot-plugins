@@ -61,3 +61,8 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "cairosvg.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "httpx.*"
+ignore_missing_imports = true
+
