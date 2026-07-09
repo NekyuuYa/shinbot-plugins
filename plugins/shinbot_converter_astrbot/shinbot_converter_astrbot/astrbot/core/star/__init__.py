@@ -1,1 +1,0 @@
-"""AstrBot core.star stub."""

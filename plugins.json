@@ -1,0 +1,64 @@
+{
+  "shinbot_converter_astrbot": {
+    "id": "shinbot_converter_astrbot",
+    "name": "AstrBot Plugin Converter",
+    "version": "2.0.0",
+    "author": "ShinBot Team",
+    "description": "Bridge layer for running AstrBot-compatible plugins inside ShinBot.",
+    "entry": "shinbot_converter_astrbot/__init__.py",
+    "role": "logic",
+    "default_enabled": true,
+    "repository": "https://github.com/NekyuuYa/shinbot_converter_astrbot",
+    "ref": "main",
+    "plugin_path": ""
+  },
+  "shinbot_plugin_astroassist": {
+    "id": "shinbot_plugin_astroassist",
+    "name": "晴天钟助手",
+    "version": "0.1.0",
+    "author": "NekyuuYa",
+    "description": "调用 Open-Meteo 获取 ECMWF 云量数据，支持高德地图定位、专业天文指标、雷达回波与 NMC 台风快讯。",
+    "entry": "shinbot_plugin_astroassist/__init__.py",
+    "role": "logic",
+    "permissions": [
+      "cmd.astroassist"
+    ],
+    "required_dependencies": [
+      "shinbot_plugin_renderkit"
+    ],
+    "repository": "https://github.com/NekyuuYa/shinbot_plugin_astroassist",
+    "ref": "main",
+    "plugin_path": ""
+  },
+  "shinbot_plugin_minesweeper": {
+    "id": "shinbot_plugin_minesweeper",
+    "name": "Minesweeper",
+    "version": "0.2.3",
+    "author": "ShinBot Contributors",
+    "description": "Session-scoped chat minesweeper game with command and comma shortcut controls.",
+    "entry": "shinbot_plugin_minesweeper/__init__.py",
+    "role": "logic",
+    "permissions": [
+      "cmd.minesweeper"
+    ],
+    "optional_dependencies": [
+      "shinbot_plugin_renderkit"
+    ],
+    "repository": "https://github.com/NekyuuYa/shinbot_plugin_minesweeper",
+    "ref": "main",
+    "plugin_path": ""
+  },
+  "shinbot_plugin_renderkit": {
+    "id": "shinbot_plugin_renderkit",
+    "name": "RenderKit",
+    "version": "0.3.1",
+    "author": "ShinBot Contributors",
+    "description": "General-purpose HTML/CSS, SVG, GIF and Typst template rendering utilities for ShinBot plugins.",
+    "entry": "shinbot_plugin_renderkit/__init__.py",
+    "role": "logic",
+    "permissions": [],
+    "repository": "https://github.com/NekyuuYa/shinbot_plugin_renderkit",
+    "ref": "main",
+    "plugin_path": ""
+  }
+}

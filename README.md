@@ -1,55 +1,20 @@
 # ShinBot Plugins
 
-Community and optional plugin monorepo for ShinBot.
+Official ShinBot plugin marketplace index.
 
-This repository is intended for plugins that are useful outside the ShinBot core
-repository, but do not yet need their own standalone repository.
+This repository stores marketplace metadata only. Plugin source code lives in
+standalone repositories, and `plugins.json` points ShinBot WebUI to those
+repositories for install and update operations.
 
-## Layout
+## Index
 
-```text
-.
-├── plugins/                  # Individual ShinBot plugins
-├── libs/                     # Shared helper packages for plugins
-├── tests/                    # Cross-plugin tests and test utilities
-└── .github/workflows/        # Repository CI
-```
+ShinBot reads `plugins.json` from the repository root. Each top-level key is a
+plugin id, and each entry includes the plugin metadata plus its GitHub
+repository URL.
 
-Plugin packages should keep the ShinBot naming convention:
+Current plugin repositories:
 
-```text
-plugins/
-└── shinbot_plugin_example/
-    ├── pyproject.toml
-    ├── README.md
-    ├── shinbot_plugin_example/
-    │   └── __init__.py
-    └── tests/
-```
-
-Each plugin exposes a `setup(plg)` entry point from its package.
-
-## When to Split a Plugin Out
-
-Keep plugins in this monorepo while they are small, experimental, or maintained
-by the same team. Split a plugin into its own repository when it needs an
-independent release cadence, separate maintainers, heavy dependencies, or a
-standalone user community.
-
-## Development
-
-Install development dependencies:
-
-```bash
-uv sync --group dev
-```
-
-Run checks:
-
-```bash
-uv run ruff check .
-uv run mypy .
-uv run pytest
-```
-
-Individual plugins may also define their own `pyproject.toml` and test commands.
+- `shinbot_plugin_astroassist`: https://github.com/NekyuuYa/shinbot_plugin_astroassist
+- `shinbot_plugin_minesweeper`: https://github.com/NekyuuYa/shinbot_plugin_minesweeper
+- `shinbot_plugin_renderkit`: https://github.com/NekyuuYa/shinbot_plugin_renderkit
+- `shinbot_converter_astrbot`: https://github.com/NekyuuYa/shinbot_converter_astrbot
