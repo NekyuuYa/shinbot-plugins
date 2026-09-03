@@ -17,4 +17,5 @@ Current plugin repositories:
 - `shinbot_plugin_astroassist`: https://github.com/NekyuuYa/shinbot_plugin_astroassist
 - `shinbot_plugin_minesweeper`: https://github.com/NekyuuYa/shinbot_plugin_minesweeper
 - `shinbot_plugin_renderkit`: https://github.com/NekyuuYa/shinbot_plugin_renderkit
+- `shinbot_plugin_linkparser`: https://github.com/NekyuuYa/shinbot_plugin_linkparser
 - `shinbot_converter_astrbot`: https://github.com/NekyuuYa/shinbot_converter_astrbot
